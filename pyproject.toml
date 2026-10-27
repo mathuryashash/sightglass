@@ -10,6 +10,7 @@ dependencies = [
     "httpx",
     "meta-sam-parser==0.1.0",
     "numpy>=2.4.6",
+    "pillow>=13.0.0",
 ]
 
 [build-system]
