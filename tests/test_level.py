@@ -156,7 +156,7 @@ def test_confidence_multiplies_sam_confidence():
 def test_extrapolated_flagged_on_reading():
     from agentwarden.level import estimate
 
-    r = estimate(flat(450), BOX, calib())  # surface below the 0 % calibration row
+    r = estimate(liquid({c: 450 for c in range(10, 50)}, bottom=500), BOX, calib())  # surface below the 0 % calibration row
     assert r.level_pct == 0.0 and r.extrapolated
 
 
