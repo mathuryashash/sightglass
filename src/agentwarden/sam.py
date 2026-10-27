@@ -1,5 +1,6 @@
 """Parse SAM 3.1 output_text into detections with frame-sized boolean masks."""
 
+import re
 from dataclasses import dataclass
 
 import meta_sam_parser as msp
@@ -10,11 +11,29 @@ class SamParseError(ValueError):
     """SAM output was malformed; no partial results are returned."""
 
 
+class SamSizeMismatch(SamParseError):
+    """SAM saw an image of a different size than the frame the caller holds."""
+
+
+# The package does not expose the w=/h= of a box token, so read them from the raw text.
+_BOX_TOKEN = re.compile(r"<\|box;([^|]*)\|>")
+_WH = re.compile(r"(?:^|;)([wh])=(\d+)(?=;|$)")
+
+
+def _check_size(text: str, frame_w: int, frame_h: int) -> None:
+    for tok in _BOX_TOKEN.finditer(text):
+        seen = {k: int(v) for k, v in _WH.findall(tok.group(1))}
+        if "w" in seen and "h" in seen and (seen["w"], seen["h"]) != (frame_w, frame_h):
+            raise SamSizeMismatch(
+                f"SAM saw {seen['w']}x{seen['h']} (w x h), frame is {frame_w}x{frame_h}"
+            )
+
+
 @dataclass(frozen=True)
 class Detection:
     box: tuple[float, float, float, float]  # (left, top, right, bottom), half-open, frame pixels
     confidence: float | None
-    mask: np.ndarray | None  # bool, frame shape (H, W); None if no frame_shape given
+    mask: np.ndarray | None  # bool, frame shape (H, W); None only for hand-built detections
 
 
 def _frame_mask(rec: "msp.SegmentationMaskRecord", frame_shape: tuple[int, int]) -> np.ndarray:
@@ -39,13 +58,15 @@ def _frame_mask(rec: "msp.SegmentationMaskRecord", frame_shape: tuple[int, int])
     return out
 
 
-def parse_sam(
-    output_text: str, frame_shape: tuple[int, int] | None = None
-) -> list[Detection]:
-    """Parse SAM output_text. `frame_shape` = (H, W); without it, masks are None.
+def parse_sam(output_text: str, frame_w: int, frame_h: int) -> list[Detection]:
+    """Parse SAM output_text into detections with (frame_h, frame_w) bool masks.
 
-    Raises SamParseError on any unparseable line, invalid record, or box/mask mismatch.
+    Raises SamSizeMismatch if the w=/h= SAM reports differ from the frame size (coordinates
+    are in SAM's source pixels, so rescaling would silently misplace them), and SamParseError
+    on any unparseable line, invalid record, or box/mask mismatch.
     """
+    frame_shape = (frame_h, frame_w)
+    _check_size(output_text, frame_w, frame_h)
     parser = msp.image_segmentation_format().create_parser()
     parser.push(output_text)
     result = parser.finish(msp.CompletedOutcome()).result
@@ -74,7 +95,7 @@ def parse_sam(
         box, mrec = boxes[oid], masks[oid]
         conf = mrec.confidence if mrec.confidence is not None else box.confidence
         try:
-            mask = None if frame_shape is None else _frame_mask(mrec, frame_shape)
+            mask = _frame_mask(mrec, frame_shape)
         except msp.InvalidSegmentationMaskError as e:
             raise SamParseError(str(e)) from e
         dets.append(

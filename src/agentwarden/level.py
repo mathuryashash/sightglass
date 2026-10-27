@@ -51,37 +51,71 @@ class Reading:
     status: Status
     top_row: float | None
     extrapolated: bool = False
+    # Safe to raise a refill alert on. False for LOW_CONFIDENCE (its level_pct is a guess, never
+    # act on it) and CAMERA_BLIND; OK/EMPTY need confidence >= ALERT_MIN_CONFIDENCE.
+    alertable: bool = False
+
+
+ALERT_MIN_CONFIDENCE = 0.5
+EMPTY_CONFIDENCE_FACTOR = 0.5
+
+
+def _reading(level, confidence, status, top_row, extrapolated=False) -> Reading:
+    alertable = status in ("OK", "EMPTY") and confidence >= ALERT_MIN_CONFIDENCE
+    return Reading(level, confidence, status, top_row, extrapolated, alertable)
+
+
+def _body_top(col: np.ndarray) -> int:
+    """Top row of the contiguous liquid run that reaches the column's bottom-most liquid row.
+
+    A run detached above it (glare, foam band, reflection) is ignored. `col` must have a True.
+    """
+    bottom = int(np.flatnonzero(col)[-1])
+    gaps = np.flatnonzero(~col[:bottom])
+    return int(gaps[-1]) + 1 if gaps.size else 0
 
 
 def estimate(
-    liquid_mask: np.ndarray,
+    liquid_mask: np.ndarray | None,
     container_box: Box | None,
     calib: Calibration,
     sam_confidence: float | None = None,
+    container_confidence: float | None = None,
 ) -> Reading:
+    """Liquid level reading. `liquid_mask` None (no liquid found) means EMPTY.
+
+    EMPTY confidence = container detection confidence (None = 1.0) x 0.5: we saw the container
+    but no liquid, which is plausible but unverified (SAM misses are a normal outcome).
+    """
     if container_box is None:
-        return Reading(None, 0.0, "CAMERA_BLIND", None)
+        return _reading(None, 0.0, "CAMERA_BLIND", None)
+    empty = _reading(
+        0.0, (1.0 if container_confidence is None else container_confidence) * EMPTY_CONFIDENCE_FACTOR, "EMPTY", None
+    )
+    if liquid_mask is None:
+        return empty
     h, w = liquid_mask.shape
     l, t, r, b = container_box
     x0, x1 = max(0, math.floor(l)), min(w, math.ceil(r))
     y0, y1 = max(0, math.floor(t)), min(h, math.ceil(b))
     inside = liquid_mask[y0:y1, x0:x1] if x1 > x0 and y1 > y0 else np.zeros((0, 0), dtype=bool)
     if not inside.any():
-        return Reading(0.0, 1.0, "EMPTY", None)
+        return empty
 
     n = inside.shape[1]
     mid = inside[:, n // 4 : n - n // 4]  # middle 50 % of columns
     has = mid.any(axis=0)
     n_mid, n_with = mid.shape[1], int(has.sum())
     if n_with == 0:
-        return Reading(None, 0.0, "LOW_CONFIDENCE", None)
+        return _reading(None, 0.0, "LOW_CONFIDENCE", None)
 
-    tops = mid[:, has].argmax(axis=0) + y0  # topmost liquid row per column, frame coordinates
+    # liquid-body surface per column, frame coordinates
+    tops = [_body_top(mid[:, c]) + y0 for c in np.flatnonzero(has)]
     top_row = float(np.median(tops))
     pct, extrapolated = calib.level_at(top_row)
     confidence = n_with / n_mid * (1.0 if sam_confidence is None else sam_confidence)
     low = n_with * 10 < n_mid * 3  # fewer than 30 % of middle columns have liquid
-    return Reading(pct, confidence, "LOW_CONFIDENCE" if low else "OK", top_row, extrapolated)
+    return _reading(pct, confidence, "LOW_CONFIDENCE" if low else "OK", top_row, extrapolated)
 
 
 def camera_moved(box_now: Box | None, box_ref: Box | None, tol_px: float) -> bool:
