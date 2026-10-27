@@ -19,7 +19,7 @@ def test_cassette_roundtrip(tmp_path):
 
 
 @pytest.mark.parametrize("bad", [
-    "Authorization: x", "Bearer abc", "sk-ABCDEFGHIJKLMNOP1234",
+    "Authorization: x", "Bearer abc", "sk-" + "Z" * 20,
 ])
 def test_cassette_refuses_auth_material(tmp_path, bad):
     c = Cassette(tmp_path)
