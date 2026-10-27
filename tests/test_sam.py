@@ -19,6 +19,7 @@ def mask_text(raster, box, *, src=(60, 80), conf="0.9", obj=0):
 
 
 FRAME = (60, 80)  # (H, W)
+WH = (80, 60)  # (frame_w, frame_h) as parse_sam takes them
 
 
 def test_mask_offset_lands_on_frame_pixels():
@@ -26,7 +27,7 @@ def test_mask_offset_lands_on_frame_pixels():
 
     raster = [[1, 0, 0, 1], [0, 1, 1, 0], [1, 1, 0, 0]]  # 3 rows x 4 cols
     text = mask_text(raster, (10, 20, 13, 22))  # bounds left=10 top=20 right=14 bottom=23
-    [det] = parse_sam(text, FRAME)
+    [det] = parse_sam(text, *WH)
     assert det.box == (10.0, 20.0, 14.0, 23.0)
     assert det.confidence == pytest.approx(0.9)
     assert det.mask.shape == FRAME and det.mask.dtype == bool
@@ -44,7 +45,7 @@ def test_mask_raster_smaller_than_bounds_is_scaled():
 
     # bounds: left=10 top=20 right=16 bottom=24 -> 6 wide x 4 tall; raster 2x2 -> scale_x=3, scale_y=2
     text = mask_text([[1, 0], [0, 1]], (10, 20, 15, 23))
-    [det] = parse_sam(text, FRAME)
+    [det] = parse_sam(text, *WH)
     expected = np.zeros(FRAME, dtype=bool)
     expected[20:22, 10:13] = True  # mask (0,0)
     expected[22:24, 13:16] = True  # mask (1,1)
@@ -56,7 +57,7 @@ def test_mask_clipped_to_frame():
     from agentwarden.sam import parse_sam
 
     text = mask_text([[1, 1], [1, 1]], (78, 58, 79, 59), src=(60, 80))
-    [det] = parse_sam(text, (60, 80))
+    [det] = parse_sam(text, *WH)
     assert det.mask.sum() == 4 and det.mask[59, 79]
 
 
@@ -65,25 +66,36 @@ def test_multiple_records_and_missing_confidence():
 
     a = mask_text([[1]], (1, 2, 1, 2), conf="0.5")
     b = mask_text([[1]], (5, 6, 5, 6), obj=1).replace(";c=0.9", "")
-    dets = parse_sam(a + "\n" + b + "\n", FRAME)
+    dets = parse_sam(a + "\n" + b + "\n", *WH)
     assert [d.box for d in dets] == [(1.0, 2.0, 2.0, 3.0), (5.0, 6.0, 6.0, 7.0)]
     assert dets[0].confidence == pytest.approx(0.5)
     assert dets[1].confidence is None
     assert dets[1].mask[6, 5]
 
 
-def test_without_frame_shape_masks_are_none():
+@pytest.mark.parametrize("size", [(81, 60), (80, 61), (60, 80), (160, 120)])
+def test_size_mismatch_raises(size):
+    from agentwarden.sam import SamParseError, SamSizeMismatch, parse_sam
+
+    text = mask_text([[1]], (1, 2, 1, 2), src=(60, 80))  # SAM saw w=80, h=60
+    with pytest.raises(SamSizeMismatch) as e:
+        parse_sam(text, *size)
+    assert isinstance(e.value, SamParseError)
+    assert "80" in str(e.value) and "60" in str(e.value)
+
+
+def test_size_match_ok():
     from agentwarden.sam import parse_sam
 
-    [det] = parse_sam(mask_text([[1]], (1, 2, 1, 2)))
-    assert det.mask is None and det.box == (1.0, 2.0, 2.0, 3.0)
+    [det] = parse_sam(mask_text([[1]], (1, 2, 1, 2)), 80, 60)
+    assert det.box == (1.0, 2.0, 2.0, 3.0)
 
 
 @pytest.mark.parametrize("text", ["", "\n", "  \n\n"])
 def test_empty_output(text):
     from agentwarden.sam import parse_sam
 
-    assert parse_sam(text, FRAME) == []
+    assert parse_sam(text, *WH) == []
 
 
 def _bad_payload():
@@ -109,4 +121,4 @@ def test_malformed_raises(text):
     from agentwarden.sam import SamParseError, parse_sam
 
     with pytest.raises(SamParseError):
-        parse_sam(text, FRAME)
+        parse_sam(text, *WH)

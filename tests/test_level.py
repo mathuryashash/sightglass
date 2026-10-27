@@ -129,6 +129,52 @@ def test_empty_container():
     assert estimate(m, BOX, calib()).status == "EMPTY"
 
 
+def test_empty_confidence_is_half_container_confidence():
+    from agentwarden.level import estimate
+
+    none = np.zeros((H, W), dtype=bool)
+    assert estimate(none, BOX, calib()).confidence == pytest.approx(0.5)  # unknown container conf = 1.0
+    assert estimate(none, BOX, calib(), container_confidence=0.8).confidence == pytest.approx(0.4)
+    assert estimate(none, BOX, calib(), container_confidence=1.0).confidence == pytest.approx(0.5)
+    assert estimate(None, BOX, calib(), container_confidence=0.6).confidence == pytest.approx(0.3)
+
+
+def test_alertable():
+    from agentwarden.level import estimate
+
+    none = np.zeros((H, W), dtype=bool)
+    # EMPTY: 1.0 x 0.5 = 0.5 -> alertable; 0.98 x 0.5 = 0.49 -> not
+    assert estimate(none, BOX, calib(), container_confidence=1.0).alertable
+    assert not estimate(none, BOX, calib(), container_confidence=0.98).alertable
+    # OK: confidence 0.5 -> alertable, 0.4 -> not
+    assert estimate(flat(250), BOX, calib(), sam_confidence=0.5).alertable
+    assert not estimate(flat(250), BOX, calib(), sam_confidence=0.4).alertable
+    # LOW_CONFIDENCE never alertable
+    r = estimate(liquid({c: 250 for c in range(20, 25)}), BOX, calib())
+    assert r.status == "LOW_CONFIDENCE" and not r.alertable
+    assert not estimate(flat(250), None, calib()).alertable  # CAMERA_BLIND
+
+
+def test_none_mask_is_empty_path():
+    from agentwarden.level import estimate
+
+    r = estimate(None, BOX, calib(), container_confidence=0.8)
+    assert r.status == "EMPTY" and r.level_pct == 0.0 and not r.alertable
+
+
+def test_glare_band_above_surface_ignored():
+    from agentwarden.level import estimate
+
+    m = flat(250)
+    m[148:153, 10:50] = True  # detached glare/foam band across every column, centred at row 150
+    r = estimate(m, BOX, calib())
+    assert r.top_row == 250  # surface-only reading: (400-250)/3 = 50 %
+    assert r.level_pct == pytest.approx(50.0)
+    assert r.status == "OK" and r.confidence == pytest.approx(1.0)
+    # a band that touches the liquid body is part of it: the surface really is at 148
+    assert estimate(flat(148), BOX, calib()).top_row == 148
+
+
 def test_low_confidence_threshold():
     from agentwarden.level import estimate
 
@@ -188,3 +234,23 @@ def test_higher_top_row_means_lower_percent(a, b):
         assert r_hi_surface.level_pct >= r_lo_surface.level_pct
         if 100 <= lo < hi <= 400:
             assert r_hi_surface.level_pct > r_lo_surface.level_pct
+
+
+@given(
+    st.integers(100, 380),
+    st.lists(st.integers(0, 4), min_size=40, max_size=40),  # per-column meniscus, px
+    st.integers(1, 15),  # surface drops by k px
+)
+def test_meniscus_surface_lowering_never_raises_level(base, mens, k):
+    from agentwarden.level import estimate
+
+    tops = {10 + i: base + m for i, m in enumerate(mens)}  # rows 100..384
+    lowered = {c: t + k for c, t in tops.items()}  # rows <= 399
+    r1 = estimate(liquid(tops), BOX, calib())
+    r2 = estimate(liquid(lowered), BOX, calib())
+    assert r1.status == r2.status == "OK"
+    mid = sorted(tops[c] for c in range(20, 40))
+    median = (mid[9] + mid[10]) / 2  # 20 middle columns
+    assert r1.top_row == median and r2.top_row == median + k
+    assert r1.level_pct == pytest.approx((400 - median) / 3)
+    assert r2.level_pct < r1.level_pct
