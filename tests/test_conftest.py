@@ -1,9 +1,9 @@
 import os
 
 
-def test_conftest_strips_key_1(monkeypatch):
-    monkeypatch.setenv("MODEL_API_KEY", "fake")
-    monkeypatch.setenv("META_TOKEN", "fake")
+def test_conftest_strips_key_1():
+    os.environ["MODEL_API_KEY"] = "fake"  # set directly, no monkeypatch cleanup
+    os.environ["META_TOKEN"] = "fake"
     assert os.environ["MODEL_API_KEY"] == "fake"
 
 
