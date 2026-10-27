@@ -23,6 +23,11 @@ IMAGE_PRICES: dict[str, float] = {
 }
 STALE_LOCK_SECONDS = 10.0
 _MICRO = 1_000_000  # micro-dollars per USD; USD-per-1M-tokens == micro-dollars per token
+# (model, kind) -> (usd per unit, minimum units billed per request)
+MEDIA_PRICES: dict[tuple[str, str], tuple[float, int]] = {
+    **{(m, "image"): (p, 0) for m, p in IMAGE_PRICES.items()},
+    ("sam-3.1", "video_frame"): (0.0002, 50),
+}
 
 
 class SpendRefused(Exception):
@@ -42,6 +47,16 @@ def _usd_to_micro(usd: float) -> int:
 def token_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Return USD cost of the given token counts for a known model."""
     return _micro_cost(model, input_tokens, output_tokens) / _MICRO
+
+
+def _media_cost(model: str, kind: str, count: int) -> int:
+    """Return integer micro-dollar cost of `count` units, honouring the per-request minimum."""
+    price, minimum = MEDIA_PRICES[(model, kind)]
+    return _usd_to_micro(price) * max(count, minimum)
+
+
+def _is_int(x: object) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool)
 
 
 def _finite_positive(x: object) -> bool:
@@ -158,6 +173,12 @@ class Ledger:
         if max_input_tokens is None or max_input_tokens < 0:
             raise SpendRefused("max_input_tokens must be >= 0")
         worst = _micro_cost(model, max_input_tokens, max_output_tokens)
+        return self._reserve(worst, run_id, cap_usd,
+                             {"model": model, "input_tokens": max_input_tokens,
+                              "output_tokens": max_output_tokens})
+
+    def _reserve(self, worst: int, run_id: str, cap_usd: float, fields: dict) -> str:
+        """Check run + global caps for `worst` micro-dollars and append the reserve row."""
         cap_micro = _usd_to_micro(cap_usd)
         with self._locked():
             rows = self._read()
@@ -166,10 +187,21 @@ class Ledger:
             if sum(self._totals(rows)) + worst > self._global_cap_micro:
                 raise SpendRefused(f"global cap {self.global_cap_usd} would be exceeded")
             rid = uuid.uuid4().hex
-            self._append({"kind": "reserve", "id": rid, "model": model, "run_id": run_id,
-                          "input_tokens": max_input_tokens, "output_tokens": max_output_tokens,
-                          "cost_micro": worst, "cached": False, "ts": time.time()})
+            self._append({"kind": "reserve", "id": rid, "run_id": run_id, "cost_micro": worst,
+                          "cached": False, "ts": time.time(), **fields})
         return rid
+
+    def reserve_media(self, model: str, kind: str, count: int, run_id: str, cap_usd: float) -> str:
+        """Reserve worst-case cost of `count` images / video frames (minimum billing applies)."""
+        if (model, kind) not in MEDIA_PRICES:
+            raise SpendRefused(f"unknown media model/kind: {model!r}/{kind!r}")
+        if not _finite_positive(cap_usd):
+            raise SpendRefused("cap_usd must be a finite number > 0")
+        if not _is_int(count) or count < 1:
+            raise SpendRefused("count must be an int >= 1")
+        worst = _media_cost(model, kind, count)
+        return self._reserve(worst, run_id, cap_usd,
+                             {"model": model, "media_kind": kind, "count": count})
 
     def _open_reservation(self, rows: list[dict], reservation_id: str) -> dict:
         """Return the reserve row; KeyError if unknown, ValueError if already closed."""
@@ -187,11 +219,27 @@ class Ledger:
             raise ValueError("token counts must be >= 0")
         with self._locked():
             res = self._open_reservation(self._read(), reservation_id)
+            if "media_kind" in res:
+                raise ValueError("media reservation: use settle_media")
             cost = 0 if cached else _micro_cost(res["model"], input_tokens, output_tokens)
             self._append({"kind": "settle", "id": reservation_id, "model": res["model"],
                           "run_id": res["run_id"], "input_tokens": input_tokens,
                           "output_tokens": output_tokens, "cost_micro": cost,
                           "cached": cached, "ts": time.time()})
+        return cost / _MICRO
+
+    def settle_media(self, reservation_id: str, count: int) -> float:
+        """Record actual media cost (minimum billing applies) and close the reservation."""
+        if not _is_int(count) or count < 0:
+            raise ValueError("count must be an int >= 0")
+        with self._locked():
+            res = self._open_reservation(self._read(), reservation_id)
+            if "media_kind" not in res:
+                raise ValueError("token reservation: use settle")
+            cost = _media_cost(res["model"], res["media_kind"], count)
+            self._append({"kind": "settle", "id": reservation_id, "model": res["model"],
+                          "run_id": res["run_id"], "media_kind": res["media_kind"],
+                          "count": count, "cost_micro": cost, "cached": False, "ts": time.time()})
         return cost / _MICRO
 
     def release(self, reservation_id: str) -> None:
