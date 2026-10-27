@@ -1,6 +1,7 @@
 import base64
-import json
 import logging
+import sys
+import types
 
 import pytest
 
@@ -86,7 +87,100 @@ def test_spark_json_missing_usage_settles_at_reserve(parts):
     body = spark_body()
     del body["usage"]
     client(parts, FakeTransport(body=body)).spark_json("p", {"type": "object"}, "r1")
-    assert parts[0].spent_total() > 0
+    # est_in = ceil((1 + 18 bytes) / 3) + 256 = 263; 263 * 1.25 + 1024 * 4.25 = 4680.75 -> 4681
+    assert parts[0].spent_total() == 0.004681
+
+
+def test_spark_estimate_uses_utf8_bytes(parts):
+    body = spark_body()
+    del body["usage"]
+    client(parts, FakeTransport(body=body)).spark_json("é" * 31, {"type": "object"}, "r1")
+    # bytes = 62 + 18 = 80; est_in = ceil(80 / 3) + 256 = 283; 283 * 1.25 + 4352 = 4705.75 -> 4706
+    assert parts[0].spent_total() == 0.004706
+
+
+def test_spark_format_is_not_strict(parts):
+    t = FakeTransport(body=spark_body())
+    schema = {"type": "object"}
+    client(parts, t).spark_json("p", schema, "r1")
+    assert t.calls[0][2]["text"] == {
+        "format": {"type": "json_schema", "name": "result", "schema": schema, "strict": False}}
+
+
+def test_sam_input_item_has_message_type(parts):
+    t = FakeTransport(body={"output": []})
+    client(parts, t).sam_image(IMG, "mug", "r1")
+    assert t.calls[0][2]["input"][0]["type"] == "message"
+
+
+PNG = b"\x89PNG-bytes"
+JPEG = b"\xff\xd8\xff-bytes"
+WEBP = b"RIFF\x00\x00\x00\x00WEBP-bytes"
+
+
+@pytest.mark.parametrize("data,mime", [(PNG, "image/png"), (JPEG, "image/jpeg"), (WEBP, "image/webp")])
+def test_sam_mime_from_magic_bytes(parts, data, mime):
+    t = FakeTransport(body={"output": []})
+    client(parts, t).sam_image(data, "mug", "r1")
+    url = t.calls[0][2]["input"][0]["content"][1]["image_url"]
+    assert url == f"data:{mime};base64," + base64.b64encode(data).decode()
+
+
+@pytest.mark.parametrize("data", [b"GIF89a-bytes", b"", b"RIFF\x00\x00\x00\x00WAVE-bytes", b"plain text"])
+def test_sam_unknown_type_refused_before_reserve(parts, monkeypatch, data):
+    t = FakeTransport(body={"output": []})
+    c = client(parts, t)
+    monkeypatch.setattr(parts[0], "reserve_media", lambda *a, **k: pytest.fail("reserved"))
+    with pytest.raises(ValueError):
+        c.sam_image(data, "mug", "r1")
+    assert t.calls == []
+
+
+def test_sam_settles_on_images_processed(parts):
+    t = FakeTransport(body={"output": [], "usage": {"images_processed": 3}})
+    client(parts, t, cap=1.0).sam_image(IMG, "mug", "r1")
+    assert parts[0].spent_total() == 0.0075  # 3 * 0.0025
+
+
+def test_sam_settle_failure_releases_reservation(parts, monkeypatch):
+    def bad_settle(rid, count):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(parts[0], "settle_media", bad_settle)
+    with pytest.raises(RuntimeError, match="disk full"):
+        client(parts, FakeTransport(body={"output": []}), cap=0.0025).sam_image(IMG, "mug", "r1")
+    monkeypatch.undo()
+    # reservation was freed: a second call fits the 0.0025 cap again
+    client(parts, FakeTransport(body={"output": []}), cap=0.0025).sam_image(IMG, "mug", "r1")
+
+
+def test_incomplete_status_raises_refusal_no_retry(parts):
+    from agentwarden.meta import MetaRefusal
+
+    t = FakeTransport(body={"status": "incomplete", "output": []})
+    with pytest.raises(MetaRefusal) as e:
+        client(parts, t).sam_image(IMG, "mug", "r1")
+    assert isinstance(e.value, MetaError)
+    assert len(t.calls) == 1
+
+
+def test_refusal_part_raises_and_is_not_recorded(parts):
+    from agentwarden.meta import MetaRefusal
+
+    body = {"status": "completed", "usage": {"input_tokens": 1000, "output_tokens": 200},
+            "output": [{"type": "message", "content": [{"type": "refusal", "refusal": "no"}]}]}
+    t = FakeTransport(body=body)
+    with pytest.raises(MetaRefusal):
+        client(parts, t, mode="record").spark_json("p", {"type": "object"}, "r1")
+    assert len(t.calls) == 1
+    assert stored(parts) == []
+    assert parts[0].spent_total() == 0.0021  # tokens were consumed, so they are charged
+
+
+def test_completed_status_is_not_refusal(parts):
+    body = spark_body()
+    body["status"] = "completed"
+    assert client(parts, FakeTransport(body=body)).spark_json("p", {"type": "object"}, "r1") == {"ok": True}
 
 
 def test_non_2xx_raises_with_status_and_charges_nothing(parts):
@@ -159,19 +253,49 @@ def test_different_concepts_do_not_collide(parts):
         client(parts, FakeTransport(), mode="replay").sam_image(IMG, "b", "r1")
 
 
-def test_key_never_in_headers_cassette_or_logs(parts, caplog):
+class FakeHttpx(types.ModuleType):
+    """Stands in for httpx: records requests, replies with a canned status/body or raises."""
+
+    def __init__(self, status=200, body=None, exc=None):
+        super().__init__("httpx")
+        self.status, self.body, self.exc, self.requests = status, body or {"output": []}, exc, []
+
+    def post(self, url, json=None, timeout=None, headers=None):
+        self.requests.append({"url": url, "json": json, "headers": dict(headers or {})})
+        if self.exc:
+            raise self.exc
+        fake = self
+
+        class Resp:
+            status_code = fake.status
+
+            def json(self):
+                return fake.body
+
+        return Resp()
+
+
+def test_key_reaches_transport_but_never_cassette_logs_or_errors(parts, caplog, monkeypatch):
     fake_key = "sk-" + "Z9" * 12  # built at runtime, never a literal
-    t = FakeTransport(body={"output": []})
+    fake = FakeHttpx()
+    monkeypatch.setitem(sys.modules, "httpx", fake)
+    transport = httpx_transport(fake_key, "https://example.invalid/v1")
     with caplog.at_level(logging.DEBUG):
-        client(parts, t, mode="record").sam_image(IMG, "mug", "r1")
-        with pytest.raises(MetaError):
-            client(parts, FakeTransport(status=401, body={"error": "bad"})).sam_image(IMG, "x", "r1")
-    # headers the client builds carry no auth; the key lives only inside httpx_transport
-    assert not any(k.lower() == "authorization" for k in t.calls[0][1])
-    assert fake_key not in json.dumps(t.calls[0][1])
+        client(parts, transport, mode="record").sam_image(IMG, "mug", "r1")
+        fake.status, fake.body = 401, {"error": "bad"}
+        with pytest.raises(MetaError) as bad_status:
+            client(parts, transport).sam_image(IMG, "x", "r1")
+        fake.exc = RuntimeError("connection failed")
+        with pytest.raises(RuntimeError) as boom:
+            client(parts, transport).sam_image(IMG, "y", "r1")
+    # the Authorization header reached the fake transport...
+    assert fake.requests[0]["url"] == "https://example.invalid/v1/responses"
+    assert fake.requests[0]["headers"]["Authorization"] == "Bearer " + fake_key
+    # ...and the key is nowhere else
     blob = "".join(p.read_text() for p in stored(parts))
-    assert fake_key not in blob and "authorization" not in blob.lower()
+    assert blob and fake_key not in blob and "authorization" not in blob.lower()
     assert fake_key not in caplog.text and "authorization" not in caplog.text.lower()
+    assert fake_key not in str(bad_status.value) and fake_key not in str(boom.value)
 
 
 def test_httpx_transport_is_a_lazy_factory():
