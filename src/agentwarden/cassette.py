@@ -5,11 +5,13 @@ import hashlib
 import json
 import os
 import re
+import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 _KEY_RE = re.compile(r"sk-[A-Za-z0-9]{16,}")
-_BAD_SUBSTRINGS = ("Authorization", "Bearer ")
+_BAD_SUBSTRINGS = ("authorization", "bearer ")
 
 
 def key_for(model: str, request: Any, run_id: str) -> str:
@@ -21,8 +23,10 @@ def key_for(model: str, request: Any, run_id: str) -> str:
 
 def _check(obj: Any) -> None:
     """Raise ValueError if any string (key or value) looks like auth material."""
-    if isinstance(obj, str):
-        if any(s in obj for s in _BAD_SUBSTRINGS) or _KEY_RE.search(obj):
+    if isinstance(obj, (bytes, bytearray)):
+        _check(bytes(obj).decode("latin-1"))
+    elif isinstance(obj, str):
+        if any(s in obj.lower() for s in _BAD_SUBSTRINGS) or _KEY_RE.search(obj):
             raise ValueError("refusing to store auth material")
     elif isinstance(obj, dict):
         for k, v in obj.items():
@@ -57,7 +61,15 @@ class Cassette:
         _check(response)
         self.dir.mkdir(parents=True, exist_ok=True)
         p = self._path(model, request, run_id)
-        tmp = p.with_suffix(".tmp")
+        tmp = p.with_name(f"{p.name}.{uuid.uuid4().hex}.tmp")
         tmp.write_text(json.dumps(response, sort_keys=True), encoding="utf-8", newline="\n")
-        os.replace(tmp, p)
+        for attempt in range(100):
+            try:
+                os.replace(tmp, p)  # Windows: PermissionError while another writer is replacing p
+                break
+            except PermissionError:
+                if attempt == 99:
+                    tmp.unlink(missing_ok=True)
+                    raise
+                time.sleep(0.005)
         return p
