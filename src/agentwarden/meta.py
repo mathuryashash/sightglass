@@ -17,16 +17,46 @@ MODES = ("replay", "record", "live")
 SAM_MODEL = "sam-3.1"
 SPARK_MODEL = "muse-spark-1.3"
 SPARK_MAX_OUTPUT_TOKENS = 1024
-_CHARS_PER_TOKEN = 3  # conservative: over-estimates tokens, so the reserve is a true worst case
+_BYTES_PER_TOKEN = 3  # conservative: over-estimates tokens, so the reserve is a true worst case
 _HEADERS = {"Content-Type": "application/json"}  # auth is added inside httpx_transport only
+
+
+_TOKEN_OVERHEAD = 256  # request framing the prompt+schema byte count does not cover
 
 
 class MetaError(Exception):
     """Non-2xx response; carries the status code (never the body or any header)."""
 
-    def __init__(self, status: int) -> None:
-        super().__init__(f"Meta API returned HTTP {status}")
+    def __init__(self, status: int, message: str | None = None) -> None:
+        super().__init__(message or f"Meta API returned HTTP {status}")
         self.status = status
+
+
+class MetaRefusal(MetaError):
+    """2xx reply that is a refusal or an incomplete response; never retried."""
+
+
+def _image_mime(data: bytes) -> str:
+    """Sniff PNG / JPEG / WEBP from magic bytes; anything else is refused."""
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("unsupported image type: expected PNG, JPEG or WEBP")
+
+
+def _check_refusal(resp: Any, status: int) -> None:
+    if not isinstance(resp, dict):
+        return
+    st = resp.get("status")
+    if st is not None and st != "completed":
+        raise MetaRefusal(status, f"Meta response not completed (status={st!r})")
+    for item in resp.get("output") or []:
+        for c in item.get("content") or []:
+            if c.get("type") == "refusal":
+                raise MetaRefusal(status, "Meta model refused the request")
 
 
 def httpx_transport(api_key: str, base_url: str) -> Transport:
@@ -70,31 +100,38 @@ class MetaClient:
         if not 200 <= status < 300:
             self.ledger.release(rid)
             raise MetaError(status)
-        settle(rid, resp)
+        try:
+            settle(rid, resp)
+        except BaseException:
+            self.ledger.release(rid)
+            raise
+        _check_refusal(resp, status)  # after settle: a refusal may still have consumed tokens
         if self.mode == "record":
             self.cassette.put(model, body, run_id, resp)
         return resp
 
     def sam_image(self, image_bytes: bytes, concept: str, run_id: str) -> Any:
         """Segment `concept` in one image; charges 1 image."""
-        url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
+        mime = _image_mime(image_bytes)  # before reserving: bad input costs nothing
+        url = f"data:{mime};base64," + base64.b64encode(image_bytes).decode("ascii")
         body = {"model": SAM_MODEL,
-                "input": [{"role": "user", "content": [
+                "input": [{"type": "message", "role": "user", "content": [
                     {"type": "input_text", "text": concept},
                     {"type": "input_image", "image_url": url}]}],
                 "metadata": {"mask_encoding": "one_bit", "include_confidence": "true"}}
         return self._call(
             SAM_MODEL, body, run_id,
             lambda: self.ledger.reserve_media(SAM_MODEL, "image", 1, run_id, self.cap_usd),
-            lambda rid, _resp: self.ledger.settle_media(rid, 1))
+            lambda rid, resp: self.ledger.settle_media(rid, _images_processed(resp)))
 
     def spark_json(self, prompt: str, schema: dict, run_id: str) -> Any:
         """Ask muse-spark for JSON matching `schema`; returns the parsed object."""
         body = {"model": SPARK_MODEL, "input": prompt,
                 "max_output_tokens": SPARK_MAX_OUTPUT_TOKENS,
                 "text": {"format": {"type": "json_schema", "name": "result",
-                                    "schema": schema, "strict": True}}}
-        est_in = math.ceil((len(prompt) + len(json.dumps(schema))) / _CHARS_PER_TOKEN)
+                                    "schema": schema, "strict": False}}}
+        n_bytes = len(prompt.encode("utf-8")) + len(json.dumps(schema).encode("utf-8"))
+        est_in = math.ceil(n_bytes / _BYTES_PER_TOKEN) + _TOKEN_OVERHEAD
 
         def settle(rid: str, resp: Any) -> None:
             usage = (resp or {}).get("usage") or {}
@@ -108,6 +145,12 @@ class MetaClient:
                                         run_id, self.cap_usd),
             settle)
         return json.loads(_output_text(resp))
+
+
+def _images_processed(resp: Any) -> int:
+    """usage.images_processed when the API reports it, else the 1 image we sent."""
+    n = ((resp or {}).get("usage") or {}).get("images_processed")
+    return 1 if n is None else n
 
 
 def _output_text(resp: Any) -> str:
