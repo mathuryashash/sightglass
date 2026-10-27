@@ -1,0 +1,19 @@
+[project]
+name = "agentwarden"
+version = "0.1.0"
+description = "Firewall for AI computer-use agents shopping on a synthetic store"
+readme = "README.md"
+authors = [{ name = "Yashash Mathur" }]
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.9.16,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.12",
+    "pytest>=9.1.1",
+]
