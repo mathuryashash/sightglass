@@ -183,6 +183,10 @@ class ReplayVision:
                          "status": "OK"})
         return cls(recs)
 
+    def records(self) -> list[dict]:
+        """The recorded readings (read-only copy), e.g. for the diagnoser's recheck_frame lookup."""
+        return [dict(r) for r in self._recs]
+
     def times(self) -> list[float]:
         return list(self._ts) if self._ts is not None else [float(i) for i in range(len(self._recs))]
 

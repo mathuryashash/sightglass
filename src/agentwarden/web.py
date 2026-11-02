@@ -21,9 +21,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from PIL import Image, ImageDraw
 
+from agentwarden.advisor import add_diagnoser_args, build_advisor
 from agentwarden.fault_injector import SCENARIOS
 from agentwarden.modbus_io import ModbusClient, ModbusPlcServer
 from agentwarden.pipeline import BANNER, Pipeline, add_common_args, drive, resolve
+from agentwarden.vision import ReplayVision
 
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 TREND_WINDOW_S = 300.0
@@ -118,11 +120,13 @@ dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0}dt{color:#9
 img{max-width:100%;border-radius:6px}svg{width:100%;height:auto;background:#fff;border-radius:6px}
 button{font:inherit;padding:6px 12px;margin:2px;border-radius:6px;border:1px solid #556;background:#2b3340;color:#e8eaed;cursor:pointer}
 form{display:inline}
+.wide{grid-column:1/-1}.note{color:#9aa4b2;font-size:13px}
 """
 
 JS = """
 const $=id=>document.getElementById(id);
 const fmt=v=>v===null||v===undefined?'-':Number(v).toFixed(1)+' %';
+const relayText=r=>!r?'-':(r.pump_enabled?'CLOSED - pump allowed':'OPEN - pump cut')+' ('+r.driver+(r.relay_fault?', FAULT':'')+')';
 async function poll(){
  try{
   const s=await (await fetch('/api/state',{cache:'no-store'})).json();
@@ -141,11 +145,55 @@ async function poll(){
   $('blind').textContent=s.camera_blind_notice?'camera blinded - no trip':'';
   $('blind').className=s.camera_blind_notice?'warn':'hidden';
   $('frame').src='/frame.png?'+Date.now();
+  $('relay').textContent=relayText(s.relay);
   $('trend').innerHTML=await (await fetch('/trend.svg',{cache:'no-store'})).text();
+  $('diag').innerHTML=await (await fetch('/diagnosis',{cache:'no-store'})).text();
  }catch(e){$('clock').textContent='disconnected';}
 }
 setInterval(poll,1000);
 """
+
+
+def relay_text(r: dict | None) -> str:
+    if not r:
+        return "-"
+    state = "CLOSED - pump allowed" if r.get("pump_enabled") else "OPEN - pump cut"
+    return f'{state} ({r.get("driver", "?")}{", FAULT" if r.get("relay_fault") else ""})'
+
+
+def render_diagnosis(d: dict | None) -> str:
+    """The advisory card. The model text is untrusted: every string goes through html.escape."""
+    e = html.escape
+    d = d or {}
+    state = d.get("state", "off")
+    rule = d.get("rule_label")
+    rule_line = f"<p>Rule baseline (no model): <b>{e(str(rule))}</b></p>" if rule else ""
+    if state == "ready":
+        try:
+            conf = f'{round(float(d.get("confidence", 0)) * 100)} %'
+        except (TypeError, ValueError):
+            conf = "-"
+        evidence = "".join(f"<li>{e(str(x))}</li>" for x in d.get("evidence") or [])
+        cross = ""
+        if d.get("agrees") is False:
+            cross = (f'<p class="bad">DISAGREES with the rule baseline: model {e(str(d.get("label")))}, '
+                     f'rule {e(str(rule))}</p>')
+        elif d.get("agrees") is True:
+            cross = f'<p class="good">Agrees with the rule baseline ({e(str(rule))})</p>'
+        body = (f'<p>Label: <b>{e(str(d.get("label")))}</b> &middot; confidence {e(conf)}</p>'
+                f'<ul>{evidence}</ul><p>{e(str(d.get("operator_note", "")))}</p>'
+                f'<p>Suggested check: {e(str(d.get("suggested_check", "")))}</p>{cross}')
+        if not cross:
+            body += rule_line
+    elif state == "pending":
+        body = f"<p>diagnosing... ({e(str(d.get('trigger', '')))})</p>{rule_line}"
+    elif state == "unavailable":
+        body = (f'<p class="warn">diagnosis unavailable ({e(str(d.get("reason", "")))}). The safety rule is not '
+                f"affected.</p>{rule_line}")
+    else:
+        body = "<p>No diagnosis requested.</p>"
+    return (f'<h2>Diagnosis (advisory - Muse Spark)</h2>{body}'
+            f'<p class="note">advisory only - does not control the pump</p>')
 
 
 def render_page(s: dict, token: str, nonce: str, trend_svg: str) -> str:
@@ -175,6 +223,7 @@ def render_page(s: dict, token: str, nonce: str, trend_svg: str) -> str:
 <dt>Camera status</dt><dd id="status">{e(cam["status"])}</dd>
 <dt>Pump</dt><dd id="pump">{"RUNNING" if s["pump_on"] else "STOPPED"}</dd>
 <dt>Permit</dt><dd id="permit">{"ON" if s["permit"] else "OFF"}</dd>
+<dt>Relay</dt><dd id="relay">{e(relay_text(s.get("relay")))}</dd>
 <dt>Trip</dt><dd id="trip" class="{"bad" if s["tripped"] else "good"}">{trip}</dd>
 <dt>Fault scenario</dt><dd id="scenario">{e(s["scenario"])}</dd></dl>
 <div id="blind" class="{"warn" if blind else "hidden"}">{blind}</div>
@@ -186,6 +235,7 @@ def render_page(s: dict, token: str, nonce: str, trend_svg: str) -> str:
 <section><h2>Camera frame (mask + surface line)</h2>
 <img id="frame" src="/frame.png" alt="latest camera frame with liquid mask overlay" width="640">
 <h2>Trend</h2><div id="trend">{trend_svg}</div></section>
+<section class="wide" id="diag">{render_diagnosis(s.get("diagnosis"))}</section>
 </main><script nonce="{nonce}">{JS}</script></body></html>"""
 
 
@@ -239,6 +289,10 @@ def create_app(pl: Pipeline) -> FastAPI:
             svg = render_trend(pl.history)
         return Response(svg, media_type="image/svg+xml")
 
+    @app.get("/diagnosis", response_class=HTMLResponse)
+    def diagnosis():
+        return HTMLResponse(render_diagnosis(pl.snapshot().get("diagnosis")))
+
     @app.post("/reset")
     async def reset(request: Request):
         if not await authorized(request):
@@ -268,19 +322,25 @@ def make_server(app, host: str = "127.0.0.1", port: int = 8765) -> uvicorn.Serve
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="SightGlass dashboard (SIMULATED, 127.0.0.1 only)")
     add_common_args(p)
+    add_diagnoser_args(p)
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--pace", type=float, help="wall seconds per tick (default 1/fps; 0 for live cameras)")
     a = p.parse_args(argv)
     server = make_server(None, a.host, a.port)  # refuse a bad host before doing anything else
     source, vision = resolve(a)
+    try:
+        advice = build_advisor(a.diagnoser, a.run_id, key_file=a.key_file, base_url=a.base_url,
+                               readings=vision.records() if isinstance(vision, ReplayVision) else None)
+    except ValueError as err:
+        p.error(str(err))
     live_camera = bool(a.source and a.source.startswith("http:"))
     pace = a.pace if a.pace is not None else (0.0 if live_camera else 1.0 / a.fps)
     mb_server = mb_client = None
     if a.modbus:
         mb_server = ModbusPlcServer(port=0).start()
         mb_client = ModbusClient("127.0.0.1", mb_server.port)
-    pl = Pipeline(vision, a.scenario, a.fault_start, None, a.seed, a.sigma, mb_server, mb_client)
+    pl = Pipeline(vision, a.scenario, a.fault_start, None, a.seed, a.sigma, mb_server, mb_client, advice=advice)
     server.config.app = create_app(pl)
     stop = threading.Event()
     threading.Thread(target=drive, args=(pl, source, live_camera, pace, stop), daemon=True).start()

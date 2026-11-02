@@ -416,8 +416,9 @@ def test_trip_queues_exactly_one_job_with_clean_data():
 
 
 def test_benign_run_queues_nothing():
-    adv = StubAdvice()
-    pl = run_demo(adv, scenario="benign")
+    adv = StubAdvice()  # the demo pour reaches 100 % and legitimately trips HIGH_HIGH, so use a calm recording
+    calm = [{"t": float(i), "level_pct": 20.0 + i * 0.5, "confidence": 0.9, "status": "OK"} for i in range(40)]
+    pl = run_demo(adv, scenario="benign", readings=calm)
     assert not pl.state.tripped and adv.calls == []
 
 

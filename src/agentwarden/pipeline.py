@@ -28,6 +28,8 @@ from agentwarden.vision import Analysis, LatestWorker, LiveVision, ReplayVision
 
 BANNER = "SIMULATED CONTROLLER ON LOCALHOST - NO REAL SYSTEM"
 BLIND_STATUSES = ("CAMERA_BLIND", "LOW_CONFIDENCE")
+UNVERIFIED_ADVICE_S = 10.0  # camera unverified for longer than this queues one advisory diagnosis
+ADVICE_WINDOW_S = 120.0  # recent events kept for the advisory diagnosis
 
 
 class Pipeline:
@@ -38,13 +40,19 @@ class Pipeline:
     def __init__(self, vision, scenario: str = "benign", fault_start_s: float = FAULT_START_S,
                  cfg: interlock.Config | None = None, seed: int = 1, camera_sigma: float = 3.0,
                  server: ModbusPlcServer | None = None, client: ModbusClient | None = None,
-                 log_path: str | Path | None = None, history_s: float = 300.0):
+                 log_path: str | Path | None = None, history_s: float = 300.0, advice=None, relay=None):
         self.vision, self.cfg = vision, cfg or interlock.Config()
         self.server, self.client = server, client
+        # `advice`: anything with submit(events, plc_series, cam_series, trigger=, limits=) and snapshot(). It only
+        # receives copies of recent readings and never sees or touches the permit; it is not imported here.
+        self.advice = advice
+        self._advice_events: deque = deque()
+        self._advice_sent: set = set()
+        self._unverified_since: float | None = None
         self.tank = TankSim(capacity_l=1000, fill_rate_lps=9, drain_rate_lps=2, level_pct=20.0)
         self.plc = PlcController(low=30.0, high=80.0)
         self.state = interlock.initial_state()
-        self.out = PermitOutput(server, client)
+        self.out = PermitOutput(server, client, relay)
         self.injector = FaultInjector(scenario, start_t=fault_start_s, drift_k=DRIFT_K,
                                       replay_window_s=REPLAY_WINDOW_S)
         self._fake = fake_camera(camera_sigma, random.Random(seed)) if vision is None else None
@@ -135,7 +143,33 @@ class Pipeline:
             self.last = ev
             if self._log:
                 self._log.write(json.dumps(ev) + "\n")
+            if self.advice is not None:
+                self._advise(t, reading.status, pump_on, actions)
             return ev
+
+    def _advise(self, t: float, status: str, pump_on: bool, actions) -> None:
+        """Queue ONE advisory diagnosis per trip (or per camera-unverified spell over 10 s). submit() only copies
+        data and starts a thread, so the tick loop is never held. No scenario name and no simulated truth is
+        passed on: only what a plant operator could see."""
+        acts = [a.value for a in actions]
+        self._advice_events.append({"t": t, "status": status, "pump_on": pump_on, "tripped": self.state.tripped,
+                                    "trip_reason": self.state.trip_reason, "actions": acts})
+        while self._advice_events and self._advice_events[0]["t"] < t - ADVICE_WINDOW_S:
+            self._advice_events.popleft()
+        unverified = interlock.Action.ALARM_CAMERA_UNVERIFIED.value in acts
+        if unverified:
+            self._unverified_since = t if self._unverified_since is None else self._unverified_since
+        else:
+            self._unverified_since = None
+            self._advice_sent.discard("camera_unverified")
+        trigger = ("trip" if self.state.tripped else
+                   "camera_unverified" if unverified and t - self._unverified_since > UNVERIFIED_ADVICE_S else None)
+        if trigger is None or trigger in self._advice_sent:
+            return
+        self._advice_sent.add(trigger)
+        limits = {"divergence_pts": self.cfg.T_pts, "divergence_s": self.cfg.N_s, "high_high_pct": self.cfg.hh_limit}
+        self.advice.submit(list(self._advice_events), [(h[0], h[1]) for h in self.history],
+                           [(h[0], h[2]) for h in self.history], trigger=trigger, limits=limits)
 
     # -- operator / demo controls
     def inject(self, scenario: str) -> None:
@@ -155,6 +189,7 @@ class Pipeline:
             self.state, actions, grant = interlock.reset_with_grant(self.state, by_human=True)
             if grant:
                 self.out.rearm(grant)
+                self._advice_sent.discard("trip")  # a later trip gets its own diagnosis
             self._refused = interlock.Action.ALARM_RESET_REFUSED in actions
             return {"ok": not self.state.tripped, "refused": self._refused}
 
@@ -175,6 +210,8 @@ class Pipeline:
                 "permit": self.permit, "tripped": self.state.tripped, "trip_reason": self.state.trip_reason,
                 "trip_t": self.state.trip_t, "alarms": alarms, "scenario": self.injector.scenario,
                 "camera_blind_notice": status in BLIND_STATUSES or moved, "finished": self.finished,
+                "relay": {**self.out.relay.snapshot(), "relay_fault": self.out.relay_fault},
+                "diagnosis": self.advice.snapshot() if self.advice is not None else {"state": "off"},
             }
 
 
