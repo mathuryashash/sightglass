@@ -350,6 +350,8 @@ def test_freeze_trips_fast_and_tank_never_overflows():
     cfg = interlock.Config()
     assert r.trip_t <= r.t_diverge_exceeds_T + cfg.N_s + 3
     assert r.max_level < 100
+    # fault starts at t=30; rate window is 20 s, so the trip lands by t=50 (well before overflow)
+    assert 30 <= r.trip_t <= 50
 
 
 def test_freeze_with_noise_still_caught():
