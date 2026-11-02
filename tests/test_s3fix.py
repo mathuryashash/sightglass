@@ -289,7 +289,7 @@ def test_closed_loop_interlock_only_removes_pump_time():
             assert b["after"] is True  # baseline: nothing ever touches the permit
         trips += any(r["tripped"] for r in with_i)
         resets += first_reset < len(with_i)
-    assert trips > 100 and resets > 5  # the property was actually exercised, not vacuous
+    assert trips > 100 and resets > 20  # the property was actually exercised, not vacuous
 
 
 # ---------------------------------------------------------------- MINORs
