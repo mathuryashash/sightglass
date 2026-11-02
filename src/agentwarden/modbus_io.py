@@ -2,18 +2,24 @@
 
 Unit 1 = PLC:    holding reg 0 = reported level x10, coil 0 = pump_running, coil 1 = pump_permit.
 Unit 2 = camera: holding reg 0 = level x10, reg 1 = confidence x100, reg 2 = status code.
-pump_permit is written ONLY by the interlock, via ModbusClient.write_permit (called from runner).
+pump_permit can only be LOWERED from the wire: the server refuses any True write to it (ILLEGAL_VALUE) and
+every write to unit 2. The one way it goes True is the in-process ModbusPlcServer.rearm_from_reset method, which
+needs a ResetGrant from interlock.reset_with_grant (human reset accepted). permit.py is the only caller of
+both ModbusClient.clear_permit and rearm_from_reset.
 The tag values live in a plain in-process TagStore; pymodbus serves them through SimDevice actions.
 """
 import asyncio
 import socket
 import threading
 
+from agentwarden import interlock
+
 from pymodbus.client import ModbusTcpClient
 from pymodbus.constants import ExcCodes
 from pymodbus.server import ModbusTcpServer
 from pymodbus.simulator import DataType, SimData, SimDevice
 
+BANNER = "SIMULATED CONTROLLER ON LOCALHOST - NO REAL SYSTEM"
 UNIT_PLC, UNIT_CAMERA = 1, 2
 REG_LEVEL, REG_CONF, REG_STATUS = 0, 1, 2
 COIL_PUMP_RUNNING, COIL_PERMIT = 0, 1
@@ -59,7 +65,9 @@ def _devices(store: TagStore) -> list[SimDevice]:
                     address <= COIL_PERMIT < address + len(set_values)
                 ):
                     return ExcCodes.ILLEGAL_ADDRESS
-                store.permit = bool(set_values[COIL_PERMIT - address])
+                if set_values[COIL_PERMIT - address]:  # the wire can only lower the permit
+                    return ExcCodes.ILLEGAL_VALUE
+                store.permit = False
             current[0] = int(store.pump_running) | (int(store.permit) << COIL_PERMIT)
             return None
         if set_values is not None:
@@ -90,6 +98,7 @@ class ModbusPlcServer:
 
     # -- lifecycle
     def start(self) -> "ModbusPlcServer":
+        print(BANNER)
         if self.port == 0:
             with socket.socket() as s:
                 s.bind((self.host, 0))
@@ -147,6 +156,11 @@ class ModbusPlcServer:
     def permit(self) -> bool:
         return self._store.permit
 
+    def rearm_from_reset(self, grant) -> None:
+        """The ONLY way the permit goes True: in-process, and only with a ResetGrant (single use)."""
+        interlock.redeem(grant)
+        self._store.permit = True
+
 
 class ModbusClient:
     """Small typed wrapper over a pymodbus TCP client."""
@@ -183,9 +197,11 @@ class ModbusClient:
 
     def read_camera(self) -> tuple[float | None, float, str]:
         level, conf, status = self._regs(UNIT_CAMERA, 3)
-        return (None if level == NO_LEVEL else level / 10), conf / 100, STATUS_NAMES[status]
+        # unknown status code: fail safe (blind = alarm only, never trusted)
+        return (None if level == NO_LEVEL else level / 10), conf / 100, STATUS_NAMES.get(status, "CAMERA_BLIND")
 
-    def write_permit(self, permit: bool) -> None:
-        r = self._c.write_coil(COIL_PERMIT, permit, device_id=UNIT_PLC)
+    def clear_permit(self) -> None:
+        """Lower the pump permit. There is deliberately no way to raise it over the wire."""
+        r = self._c.write_coil(COIL_PERMIT, False, device_id=UNIT_PLC)
         if r.isError():
             raise IOError(f"modbus write failed: {r}")

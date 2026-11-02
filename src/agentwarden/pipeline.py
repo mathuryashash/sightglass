@@ -1,8 +1,8 @@
 """Camera source + vision (live or replay) -> modbus camera tag -> interlock -> event log.
 
 SIMULATED CONTROLLER ON LOCALHOST - NO REAL SYSTEM. The interlock can only switch the pump permit off;
-`permit` here is DERIVED from the interlock latch (permit == not tripped), so nothing in this module
-sets it True. The one way a latch clears is `human_reset()` -> `interlock.reset(by_human=True)`.
+`permit` here is held by permit.PermitOutput: this module can only pass it the interlock's actions, and the one
+way it goes back on is `human_reset()` -> `interlock.reset_with_grant(by_human=True)` -> `PermitOutput.rearm(grant)`.
 
     python -m agentwarden.pipeline --source clip:../spike/real/pour.mp4 --fps 1 --scenario freeze --replay <json>
     python -m agentwarden.pipeline --replay demo --scenario freeze
@@ -21,6 +21,7 @@ from agentwarden.camera_source import ClipSource, FakeSource, HttpShotSource, St
 from agentwarden.fault_injector import SCENARIOS, FaultInjector
 from agentwarden.level import Reading
 from agentwarden.modbus_io import ModbusClient, ModbusPlcServer
+from agentwarden.permit import PermitOutput
 from agentwarden.plc_sim import PlcController, TankSim
 from agentwarden.runner import DRIFT_K, FAULT_START_S, REPLAY_WINDOW_S, Summary, fake_camera
 from agentwarden.vision import Analysis, LatestWorker, LiveVision, ReplayVision
@@ -43,6 +44,7 @@ class Pipeline:
         self.tank = TankSim(capacity_l=1000, fill_rate_lps=9, drain_rate_lps=2, level_pct=20.0)
         self.plc = PlcController(low=30.0, high=80.0)
         self.state = interlock.initial_state()
+        self.out = PermitOutput(server, client)
         self.injector = FaultInjector(scenario, start_t=fault_start_s, drift_k=DRIFT_K,
                                       replay_window_s=REPLAY_WINDOW_S)
         self._fake = fake_camera(camera_sigma, random.Random(seed)) if vision is None else None
@@ -67,7 +69,7 @@ class Pipeline:
 
     @property
     def permit(self) -> bool:
-        return not self.state.tripped
+        return self.out.permit
 
     def close(self) -> None:
         if self._log:
@@ -99,6 +101,7 @@ class Pipeline:
             if s.t_diverge_exceeds_T is None and abs(truth - reported) > self.cfg.T_pts:
                 s.t_diverge_exceeds_T = t
             self.state, actions = interlock.step(self.state, reading, plc_level, 0.0, t, self.cfg)
+            self.out.apply(actions)
             if self.state.tripped and not s.tripped:
                 s.tripped, s.trip_t, s.trip_reason = True, self.state.trip_t, self.state.trip_reason
                 if reading.level_pct is not None:
@@ -149,7 +152,9 @@ class Pipeline:
     def human_reset(self) -> dict:
         """A human operator's reset; the interlock refuses it while the trip condition still holds."""
         with self.lock:
-            self.state, actions = interlock.reset(self.state, by_human=True)
+            self.state, actions, grant = interlock.reset_with_grant(self.state, by_human=True)
+            if grant:
+                self.out.rearm(grant)
             self._refused = interlock.Action.ALARM_RESET_REFUSED in actions
             return {"ok": not self.state.tripped, "refused": self._refused}
 
@@ -279,6 +284,7 @@ def main(argv=None) -> int:
     add_common_args(p)
     p.add_argument("--log", help="write JSONL event log here")
     a = p.parse_args(argv)
+    print(BANNER)
     source, vision = resolve(a)
     live_camera = a.source is not None and a.source.startswith("http:")
     s = run(source, vision, a.scenario, a.fault_start, a.seed, a.sigma, a.log, a.modbus,

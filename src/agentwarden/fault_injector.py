@@ -1,12 +1,15 @@
 """Fault scenarios applied to the PLC's REPORTED level only; the simulated truth keeps evolving."""
 import bisect
 
-BANNER = "SIMULATED CONTROLLER ON LOCALHOST - NO REAL SYSTEM"
-LOCAL_HOSTS = ("127.0.0.1", "localhost")
+from agentwarden.modbus_io import BANNER, ModbusClient, _check_host
+
 SCENARIOS = ("benign", "freeze", "drift", "replay")
 
 
 class FaultInjector:
+    """`host` is the address the injector talks to (the PLC's Modbus server) when `port` is given; anything
+    but localhost is a ValueError before a socket is opened or anything is printed."""
+
     def __init__(
         self,
         scenario: str,
@@ -14,9 +17,9 @@ class FaultInjector:
         start_t: float = 0.0,
         drift_k: float = 0.5,
         replay_window_s: float = 60.0,
+        port: int | None = None,
     ):
-        if host not in LOCAL_HOSTS:
-            raise ValueError(f"fault injector only runs against localhost, got {host!r}")
+        self.host = _check_host(host)
         if scenario not in SCENARIOS:
             raise ValueError(f"unknown scenario {scenario!r}; expected one of {SCENARIOS}")
         self.scenario = scenario
@@ -26,7 +29,16 @@ class FaultInjector:
         self._frozen: float | None = None
         self._ts: list[float] = []  # truth history, for replay
         self._vs: list[float] = []
+        self._client = ModbusClient(self.host, port) if port is not None else None
         print(BANNER)
+
+    def reported_from_wire(self, t: float) -> float:
+        """Read the PLC's true level over Modbus from `host`, then apply the fault to it."""
+        return self.reported(self._client.read_plc_level(), t)
+
+    def close(self) -> None:
+        if self._client:
+            self._client.close()
 
     def reported(self, truth: float, t: float) -> float:
         if t < self.start_t or self.scenario == "benign":

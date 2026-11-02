@@ -1,7 +1,7 @@
 """Closed-loop run: tank + PLC control + fault injector + camera source + interlock, injected clock.
 
 SIMULATED CONTROLLER ON LOCALHOST - NO REAL SYSTEM. The only thing the interlock can do to the plant
-is clear the pump permit; this runner applies that single action and nothing else.
+is clear the pump permit; permit.PermitOutput applies that single action and nothing else.
 
     python -m agentwarden.runner --scenario freeze|drift|replay|benign --seconds 300 --seed 1
 """
@@ -14,7 +14,8 @@ from pathlib import Path
 from agentwarden import interlock
 from agentwarden.fault_injector import SCENARIOS, FaultInjector
 from agentwarden.level import Reading
-from agentwarden.modbus_io import ModbusClient, ModbusPlcServer
+from agentwarden.modbus_io import BANNER, ModbusClient, ModbusPlcServer
+from agentwarden.permit import PermitOutput
 from agentwarden.plc_sim import PlcController, TankSim
 
 FAULT_START_S = 30.0
@@ -31,6 +32,7 @@ class Summary:
     trip_reason: str | None = None
     diff_at_trip: float | None = None  # |camera - plc| on the tripping tick
     t_diverge_exceeds_T: float | None = None  # first t where |truth - reported| > T_pts
+    plc_stale_t: float | None = None  # first tick the interlock saw a stale PLC (ALARM_PLC_STALE)
     overflowed: bool = False
     max_level: float = 0.0
     permit_coil_final: bool = True
@@ -56,22 +58,26 @@ def run(
     use_modbus: bool = False,
     camera=None,
     cfg: interlock.Config | None = None,
+    drift_k: float = DRIFT_K,
+    plc_stop_t: float | None = None,
 ) -> Summary:
+    """plc_stop_t: from this time on the PLC value stops refreshing for the interlock (stale-PLC scenario)."""
     cfg = cfg or interlock.Config()
     rng = random.Random(seed)
     camera = camera or fake_camera(camera_sigma, rng)
     tank = TankSim(capacity_l=1000, fill_rate_lps=9, drain_rate_lps=2, level_pct=20.0)
     plc = PlcController(low=30.0, high=80.0)
     injector = FaultInjector(
-        scenario, start_t=FAULT_START_S, drift_k=DRIFT_K, replay_window_s=REPLAY_WINDOW_S
+        scenario, start_t=FAULT_START_S, drift_k=drift_k, replay_window_s=REPLAY_WINDOW_S
     )
     summary = Summary(scenario, seconds)
     state = interlock.initial_state()
-    permit = True
     server = client = None
     if use_modbus:
         server = ModbusPlcServer(port=0).start()
         client = ModbusClient("127.0.0.1", server.port)
+    out = PermitOutput(server, client)
+    seen_plc, seen_plc_t = None, 0.0  # last PLC value the interlock actually received, and when
     log = open(log_path, "w", encoding="utf-8") if log_path else None
     try:
         for i in range(int(seconds / dt)):
@@ -79,21 +85,24 @@ def run(
             truth = tank.level_pct
             reported = injector.reported(truth, t)
             reading = camera(truth, t)
+            plc_level = round(reported, 1)  # same x10 quantisation as the register; what the PLC itself uses
             if client:
                 server.publish_plc(reported, plc.pump_on)
-                plc_level = client.read_plc_level()
-            else:
-                plc_level = round(reported, 1)  # same x10 quantisation as the register
+            if plc_stop_t is None or t < plc_stop_t:  # a read that fails counts as stale, not as a value
+                try:
+                    seen_plc, seen_plc_t = (client.read_plc_level() if client else plc_level), t
+                except OSError:
+                    pass
             if summary.t_diverge_exceeds_T is None and abs(truth - reported) > cfg.T_pts:
                 summary.t_diverge_exceeds_T = t
 
-            state, actions = interlock.step(state, reading, plc_level, 0.0, t, cfg)
-            if interlock.Action.WRITE_PERMIT_FALSE in actions:
-                permit = False
-                if client:
-                    client.write_permit(False)
-            if client:
-                permit = client.read_permit()
+            state, actions = interlock.step(
+                state, reading, plc_level if seen_plc is None else seen_plc, t - seen_plc_t, t, cfg
+            )
+            if summary.plc_stale_t is None and interlock.Action.ALARM_PLC_STALE in actions:
+                summary.plc_stale_t = t
+            out.apply(actions)
+            permit = out.permit
             if state.tripped and not summary.tripped:
                 summary.tripped, summary.trip_t = True, state.trip_t
                 summary.trip_reason = state.trip_reason
@@ -110,7 +119,7 @@ def run(
                     "actions": [a.value for a in actions],
                 }) + "\n")
         summary.overflowed = tank.overflowed
-        summary.permit_coil_final = server.permit if server else permit
+        summary.permit_coil_final = server.permit if server else out.permit
     finally:
         if log:
             log.close()
@@ -130,6 +139,7 @@ def main(argv=None) -> int:
     p.add_argument("--modbus", action="store_true", help="route tags through a localhost Modbus server")
     p.add_argument("--log", help="write JSONL event log here")
     a = p.parse_args(argv)
+    print(BANNER)
     s = run(a.scenario, a.seconds, a.seed, a.sigma, log_path=a.log, use_modbus=a.modbus)
     print(json.dumps(asdict(s)))
     return 0

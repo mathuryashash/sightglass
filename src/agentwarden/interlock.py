@@ -1,7 +1,8 @@
 """Deterministic overflow interlock. It may only switch the pump permit OFF, and the trip latches.
 
 step() is pure (injected time, no I/O) and can never emit WRITE_PERMIT_TRUE. Only reset(by_human=True)
-can, and only once the trip condition has cleared. Documented limit: a camera that goes blind and
+can, and only once the trip condition has cleared. Re-arming needs a ResetGrant, which only reset_with_grant()
+mints (single use; the permit module redeems it). Documented limit: a camera that goes blind and
 THEN a PLC spoof begins is undetected, because CAMERA_BLIND/LOW_CONFIDENCE only alarm and clear the
 mismatch timers; it never trips.
 """
@@ -12,6 +13,7 @@ from agentwarden.level import Reading
 
 RATE_MIN_SAMPLES = 5
 RATE_MIN_SPAN_FRAC = 0.9
+HH_MIN_FRAMES = 2  # consecutive alertable frames at/above hh_limit before HIGH_HIGH trips (glare debounce)
 
 
 class Action(str, Enum):
@@ -24,6 +26,9 @@ class Action(str, Enum):
 
 @dataclass(frozen=True)
 class Config:
+    """Trip thresholds. The default T_pts=15 is PROVISIONAL: replace it with from_error_stats(p95) once the
+    camera-vs-truth error (S2) is measured. Divergence is symmetric: camera below the PLC also trips."""
+
     T_pts: float = 15.0  # |camera - plc| above this counts as divergence
     N_s: float = 5.0  # ...continuously for this long
     W_s: float = 20.0  # rate window
@@ -31,6 +36,11 @@ class Config:
     plc_stale_s: float = 10.0
     hh_limit: float = 95.0  # high-high: trip on camera alone
     hyst_pts: float = 3.0  # divergence timer only clears once diff <= T - hyst
+
+    @classmethod
+    def from_error_stats(cls, p95_err: float) -> "Config":
+        """T = max(3 x p95 camera error, 10) points."""
+        return cls(T_pts=max(3 * p95_err, 10.0))
 
 
 @dataclass(frozen=True)
@@ -43,6 +53,7 @@ class InterlockState:
     plc_hist: tuple = ()
     condition_active: bool = False
     last_t: float | None = None
+    hh_n: int = 0  # consecutive alertable frames at/above hh_limit
 
 
 def initial_state() -> InterlockState:
@@ -84,6 +95,7 @@ def step(state: InterlockState, camera: Reading, plc_level: float, plc_age_s: fl
 
     cam_hist, plc_hist, since = state.cam_hist, state.plc_hist, state.mismatch_since
     hh = diverged = trip_div = rate = False
+    hh_n = 0
     if not alertable:
         actions.append(Action.ALARM_CAMERA_UNVERIFIED)
         cam_hist, plc_hist, since = (), (), None
@@ -91,6 +103,7 @@ def step(state: InterlockState, camera: Reading, plc_level: float, plc_age_s: fl
         level = camera.level_pct
         cam_hist = _push(cam_hist, t, level, cfg)
         hh = level >= cfg.hh_limit
+        hh_n = state.hh_n + 1 if hh else 0
         if stale:  # PLC value untrusted: neither feeds nor keeps the mismatch rules
             plc_hist, since = (), None
         else:
@@ -105,21 +118,51 @@ def step(state: InterlockState, camera: Reading, plc_level: float, plc_age_s: fl
             rate = _rate_mismatch(cam_hist, plc_hist, cfg)
 
     tripped, reason, trip_t = state.tripped, state.trip_reason, state.trip_t
-    if not tripped and (hh or trip_div or rate):
+    trip_hh = hh_n >= HH_MIN_FRAMES
+    if not tripped and (trip_hh or trip_div or rate):
         tripped, trip_t = True, t
-        reason = "HIGH_HIGH" if hh else "RATE" if rate else "DIVERGENCE"
+        reason = "HIGH_HIGH" if trip_hh else "RATE" if rate else "DIVERGENCE"
     if tripped:
         actions.append(Action.WRITE_PERMIT_FALSE)
 
     # Reset may only be accepted when the condition is positively gone: refuse while unverifiable.
-    condition = hh or diverged or rate or (tripped and (not alertable or stale))
-    return InterlockState(tripped, reason, trip_t, since, cam_hist, plc_hist, condition, t), actions
+    # (a running divergence timer in the hysteresis band also counts: the condition is not truly cleared)
+    condition = hh or diverged or rate or since is not None or (tripped and (not alertable or stale))
+    return InterlockState(tripped, reason, trip_t, since, cam_hist, plc_hist, condition, t, hh_n), actions
+
+
+_MINT = object()  # private key: only this module can build a ResetGrant
+
+
+class ResetGrant:
+    """Proof that a human reset was accepted. Minted only by reset_with_grant(); single use."""
+
+    __slots__ = ("_used",)
+
+    def __init__(self, key=None):
+        if key is not _MINT:
+            raise PermissionError("ResetGrant can only be issued by interlock.reset_with_grant")
+        self._used = False
+
+
+def redeem(grant) -> None:
+    """Consume a grant (the permit module calls this before re-arming). Anything else is refused."""
+    if not isinstance(grant, ResetGrant) or grant._used:
+        raise PermissionError("re-arm needs an unused ResetGrant from a successful human reset")
+    grant._used = True
+
+
+def reset_with_grant(
+    state: InterlockState, by_human: bool = False
+) -> tuple[InterlockState, list[Action], ResetGrant | None]:
+    """Clear a latched trip. Refused unless by a human AND the trip condition no longer holds."""
+    if not state.tripped:
+        return state, [], None
+    if not by_human or state.condition_active:
+        return state, [Action.ALARM_RESET_REFUSED], None
+    return initial_state(), [Action.WRITE_PERMIT_TRUE], ResetGrant(_MINT)
 
 
 def reset(state: InterlockState, by_human: bool = False) -> tuple[InterlockState, list[Action]]:
-    """Clear a latched trip. Refused unless by a human AND the trip condition no longer holds."""
-    if not state.tripped:
-        return state, []
-    if not by_human or state.condition_active:
-        return state, [Action.ALARM_RESET_REFUSED]
-    return initial_state(), [Action.WRITE_PERMIT_TRUE]
+    """reset_with_grant() without the grant: clears the latch but cannot re-arm the permit."""
+    return reset_with_grant(state, by_human)[:2]

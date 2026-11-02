@@ -599,7 +599,7 @@ def test_pipeline_permit_only_derived_and_reset_only_by_human():
     text = _src()["pipeline.py"]
     assert not re.search(r"permit\s*=\s*True", text)
     assert "write_permit" not in text and "WRITE_PERMIT_TRUE" not in text
-    resets = re.findall(r"interlock\.reset\(([^)]*)\)", text)
+    resets = re.findall(r"interlock\.reset(?:_with_grant)?\(([^)]*)\)", text)
     assert resets and all("by_human=True" in r for r in resets), resets
 
 
