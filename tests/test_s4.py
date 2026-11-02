@@ -319,8 +319,9 @@ def test_replay_pipeline_camera_levels_rise():
 
 
 def test_replay_benign_never_trips():
-    s = run_pipeline("benign")
+    s = run_pipeline("benign", rising(hi=90.0))  # below high-high (95); a pour to 100 trips HIGH_HIGH by design
     assert not s.tripped and not s.overflowed
+    assert run_pipeline("benign").trip_reason == "HIGH_HIGH"
 
 
 def test_replay_freeze_trips_before_overflow():
