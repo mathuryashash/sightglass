@@ -1,0 +1,1028 @@
+[
+  {
+    "t": 0.0,
+    "photo": "t001.jpg",
+    "secs": 6.1,
+    "n_bottle": 1,
+    "n_liquid": 0,
+    "status": "EMPTY",
+    "level": 0.0,
+    "conf": 0.43,
+    "top_row": null,
+    "box": [
+      6,
+      326,
+      66,
+      567
+    ],
+    "level_pct": 0.0,
+    "confidence": 0.43
+  },
+  {
+    "t": 1.0,
+    "photo": "t002.jpg",
+    "secs": 6.4,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 62.4,
+    "conf": 0.67,
+    "top_row": 517.0,
+    "box": [
+      0,
+      232,
+      88,
+      787
+    ],
+    "level_pct": 62.4,
+    "confidence": 0.67
+  },
+  {
+    "t": 2.0,
+    "photo": "t003.jpg",
+    "secs": 6.7,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 20.2,
+    "conf": 0.71,
+    "top_row": 725.0,
+    "box": [
+      0,
+      265,
+      125,
+      811
+    ],
+    "level_pct": 20.2,
+    "confidence": 0.71
+  },
+  {
+    "t": 3.0,
+    "photo": "t004.jpg",
+    "secs": 5.7,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 18.0,
+    "conf": 0.6,
+    "top_row": 712.0,
+    "box": [
+      0,
+      246,
+      134,
+      788
+    ],
+    "level_pct": 18.0,
+    "confidence": 0.6
+  },
+  {
+    "t": 4.0,
+    "photo": "t005.jpg",
+    "secs": 6.1,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 17.3,
+    "conf": 0.53,
+    "top_row": 774.5,
+    "box": [
+      16,
+      292,
+      182,
+      850
+    ],
+    "level_pct": 17.3,
+    "confidence": 0.53
+  },
+  {
+    "t": 5.0,
+    "photo": "t006.jpg",
+    "secs": 5.1,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 15.2,
+    "conf": 0.53,
+    "top_row": 785.0,
+    "box": [
+      33,
+      302,
+      188,
+      850
+    ],
+    "level_pct": 15.2,
+    "confidence": 0.53
+  },
+  {
+    "t": 6.0,
+    "photo": "t007.jpg",
+    "secs": 6.3,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 15.0,
+    "conf": 0.52,
+    "top_row": 787.0,
+    "box": [
+      29,
+      313,
+      186,
+      850
+    ],
+    "level_pct": 15.0,
+    "confidence": 0.52
+  },
+  {
+    "t": 7.0,
+    "photo": "t008.jpg",
+    "secs": 5.1,
+    "n_bottle": 3,
+    "n_liquid": 0,
+    "status": "EMPTY",
+    "level": 0.0,
+    "conf": 0.46,
+    "top_row": null,
+    "box": [
+      39,
+      326,
+      201,
+      850
+    ],
+    "level_pct": 0.0,
+    "confidence": 0.46
+  },
+  {
+    "t": 8.0,
+    "photo": "t009.jpg",
+    "secs": 7.5,
+    "n_bottle": 4,
+    "n_liquid": 0,
+    "status": "EMPTY",
+    "level": 0.0,
+    "conf": 0.46,
+    "top_row": null,
+    "box": [
+      58,
+      314,
+      209,
+      850
+    ],
+    "level_pct": 0.0,
+    "confidence": 0.46
+  },
+  {
+    "t": 9.0,
+    "photo": "t010.jpg",
+    "secs": 8.1,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 15.6,
+    "conf": 0.68,
+    "top_row": 783.0,
+    "box": [
+      44,
+      301,
+      196,
+      850
+    ],
+    "level_pct": 15.6,
+    "confidence": 0.68
+  },
+  {
+    "t": 10.0,
+    "photo": "t011.jpg",
+    "secs": 5.1,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 21.2,
+    "conf": 0.85,
+    "top_row": 724.0,
+    "box": [
+      63,
+      260,
+      213,
+      816
+    ],
+    "level_pct": 21.2,
+    "confidence": 0.85
+  },
+  {
+    "t": 11.0,
+    "photo": "t012.jpg",
+    "secs": 5.2,
+    "n_bottle": 3,
+    "n_liquid": 2,
+    "status": "OK",
+    "level": 24.2,
+    "conf": 0.91,
+    "top_row": 726.0,
+    "box": [
+      87,
+      263,
+      235,
+      834
+    ],
+    "level_pct": 24.2,
+    "confidence": 0.91
+  },
+  {
+    "t": 12.0,
+    "photo": "t013.jpg",
+    "secs": 6.1,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 25.0,
+    "conf": 0.93,
+    "top_row": 696.5,
+    "box": [
+      80,
+      241,
+      228,
+      807
+    ],
+    "level_pct": 25.0,
+    "confidence": 0.93
+  },
+  {
+    "t": 13.0,
+    "photo": "t014.jpg",
+    "secs": 5.4,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 28.2,
+    "conf": 0.93,
+    "top_row": 685.0,
+    "box": [
+      75,
+      242,
+      228,
+      810
+    ],
+    "level_pct": 28.2,
+    "confidence": 0.93
+  },
+  {
+    "t": 14.0,
+    "photo": "t015.jpg",
+    "secs": 5.6,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 30.8,
+    "conf": 0.93,
+    "top_row": 685.0,
+    "box": [
+      67,
+      255,
+      219,
+      821
+    ],
+    "level_pct": 30.8,
+    "confidence": 0.93
+  },
+  {
+    "t": 15.0,
+    "photo": "t016.jpg",
+    "secs": 5.2,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 33.0,
+    "conf": 0.93,
+    "top_row": 672.0,
+    "box": [
+      75,
+      251,
+      230,
+      818
+    ],
+    "level_pct": 33.0,
+    "confidence": 0.93
+  },
+  {
+    "t": 16.0,
+    "photo": "t017.jpg",
+    "secs": 5.3,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 35.4,
+    "conf": 0.94,
+    "top_row": 648.0,
+    "box": [
+      76,
+      236,
+      232,
+      805
+    ],
+    "level_pct": 35.4,
+    "confidence": 0.94
+  },
+  {
+    "t": 17.0,
+    "photo": "t018.jpg",
+    "secs": 5.8,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 36.8,
+    "conf": 0.93,
+    "top_row": 640.0,
+    "box": [
+      74,
+      230,
+      226,
+      805
+    ],
+    "level_pct": 36.8,
+    "confidence": 0.93
+  },
+  {
+    "t": 18.0,
+    "photo": "t019.jpg",
+    "secs": 6.6,
+    "n_bottle": 3,
+    "n_liquid": 2,
+    "status": "OK",
+    "level": 40.1,
+    "conf": 0.95,
+    "top_row": 633.0,
+    "box": [
+      67,
+      239,
+      227,
+      812
+    ],
+    "level_pct": 40.1,
+    "confidence": 0.95
+  },
+  {
+    "t": 19.0,
+    "photo": "t020.jpg",
+    "secs": 5.7,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 40.9,
+    "conf": 0.95,
+    "top_row": 630.0,
+    "box": [
+      64,
+      240,
+      224,
+      813
+    ],
+    "level_pct": 40.9,
+    "confidence": 0.95
+  },
+  {
+    "t": 20.0,
+    "photo": "t021.jpg",
+    "secs": 5.4,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 41.8,
+    "conf": 0.95,
+    "top_row": 622.0,
+    "box": [
+      59,
+      237,
+      221,
+      808
+    ],
+    "level_pct": 41.8,
+    "confidence": 0.95
+  },
+  {
+    "t": 21.0,
+    "photo": "t022.jpg",
+    "secs": 6.0,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 44.5,
+    "conf": 0.95,
+    "top_row": 614.0,
+    "box": [
+      68,
+      241,
+      232,
+      812
+    ],
+    "level_pct": 44.5,
+    "confidence": 0.95
+  },
+  {
+    "t": 22.0,
+    "photo": "t023.jpg",
+    "secs": 6.5,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 46.9,
+    "conf": 0.96,
+    "top_row": 599.0,
+    "box": [
+      70,
+      239,
+      233,
+      807
+    ],
+    "level_pct": 46.9,
+    "confidence": 0.96
+  },
+  {
+    "t": 23.0,
+    "photo": "t024.jpg",
+    "secs": 5.6,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 49.2,
+    "conf": 0.95,
+    "top_row": 590.0,
+    "box": [
+      70,
+      242,
+      235,
+      807
+    ],
+    "level_pct": 49.2,
+    "confidence": 0.95
+  },
+  {
+    "t": 24.0,
+    "photo": "t025.jpg",
+    "secs": 5.9,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 49.4,
+    "conf": 0.95,
+    "top_row": 596.0,
+    "box": [
+      66,
+      248,
+      229,
+      814
+    ],
+    "level_pct": 49.4,
+    "confidence": 0.95
+  },
+  {
+    "t": 25.0,
+    "photo": "t026.jpg",
+    "secs": 6.1,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 51.2,
+    "conf": 0.95,
+    "top_row": 585.0,
+    "box": [
+      71,
+      239,
+      235,
+      815
+    ],
+    "level_pct": 51.2,
+    "confidence": 0.95
+  },
+  {
+    "t": 26.0,
+    "photo": "t027.jpg",
+    "secs": 5.2,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 53.6,
+    "conf": 0.96,
+    "top_row": 573.5,
+    "box": [
+      76,
+      239,
+      240,
+      814
+    ],
+    "level_pct": 53.6,
+    "confidence": 0.96
+  },
+  {
+    "t": 27.0,
+    "photo": "t028.jpg",
+    "secs": 6.4,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 56.8,
+    "conf": 0.95,
+    "top_row": 560.0,
+    "box": [
+      75,
+      241,
+      239,
+      814
+    ],
+    "level_pct": 56.8,
+    "confidence": 0.95
+  },
+  {
+    "t": 28.0,
+    "photo": "t029.jpg",
+    "secs": 5.3,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 58.0,
+    "conf": 0.95,
+    "top_row": 553.0,
+    "box": [
+      76,
+      241,
+      236,
+      811
+    ],
+    "level_pct": 58.0,
+    "confidence": 0.95
+  },
+  {
+    "t": 29.0,
+    "photo": "t030.jpg",
+    "secs": 5.7,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 59.4,
+    "conf": 0.95,
+    "top_row": 545.0,
+    "box": [
+      72,
+      243,
+      231,
+      806
+    ],
+    "level_pct": 59.4,
+    "confidence": 0.95
+  },
+  {
+    "t": 30.0,
+    "photo": "t031.jpg",
+    "secs": 6.0,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 63.2,
+    "conf": 0.95,
+    "top_row": 530.0,
+    "box": [
+      75,
+      244,
+      233,
+      808
+    ],
+    "level_pct": 63.2,
+    "confidence": 0.95
+  },
+  {
+    "t": 31.0,
+    "photo": "t032.jpg",
+    "secs": 5.4,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 64.4,
+    "conf": 0.95,
+    "top_row": 531.0,
+    "box": [
+      69,
+      250,
+      227,
+      815
+    ],
+    "level_pct": 64.4,
+    "confidence": 0.95
+  },
+  {
+    "t": 32.0,
+    "photo": "t033.jpg",
+    "secs": 6.0,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 65.4,
+    "conf": 0.95,
+    "top_row": 539.0,
+    "box": [
+      62,
+      265,
+      203,
+      824
+    ],
+    "level_pct": 65.4,
+    "confidence": 0.95
+  },
+  {
+    "t": 33.0,
+    "photo": "t034.jpg",
+    "secs": 6.0,
+    "n_bottle": 4,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 66.5,
+    "conf": 0.95,
+    "top_row": 534.0,
+    "box": [
+      64,
+      262,
+      208,
+      827
+    ],
+    "level_pct": 66.5,
+    "confidence": 0.95
+  },
+  {
+    "t": 34.0,
+    "photo": "t035.jpg",
+    "secs": 6.0,
+    "n_bottle": 4,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 70.2,
+    "conf": 0.94,
+    "top_row": 514.0,
+    "box": [
+      57,
+      255,
+      209,
+      827
+    ],
+    "level_pct": 70.2,
+    "confidence": 0.94
+  },
+  {
+    "t": 35.0,
+    "photo": "t036.jpg",
+    "secs": 5.2,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 71.7,
+    "conf": 0.93,
+    "top_row": 501.0,
+    "box": [
+      68,
+      250,
+      217,
+      820
+    ],
+    "level_pct": 71.7,
+    "confidence": 0.93
+  },
+  {
+    "t": 36.0,
+    "photo": "t037.jpg",
+    "secs": 5.2,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 73.2,
+    "conf": 0.94,
+    "top_row": 486.0,
+    "box": [
+      67,
+      239,
+      213,
+      815
+    ],
+    "level_pct": 73.2,
+    "confidence": 0.94
+  },
+  {
+    "t": 37.0,
+    "photo": "t038.jpg",
+    "secs": 6.1,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 78.5,
+    "conf": 0.92,
+    "top_row": 451.0,
+    "box": [
+      62,
+      228,
+      208,
+      803
+    ],
+    "level_pct": 78.5,
+    "confidence": 0.92
+  },
+  {
+    "t": 38.0,
+    "photo": "t039.jpg",
+    "secs": 5.6,
+    "n_bottle": 3,
+    "n_liquid": 2,
+    "status": "OK",
+    "level": 80.0,
+    "conf": 0.93,
+    "top_row": 434.0,
+    "box": [
+      63,
+      221,
+      208,
+      788
+    ],
+    "level_pct": 80.0,
+    "confidence": 0.93
+  },
+  {
+    "t": 39.0,
+    "photo": "t040.jpg",
+    "secs": 6.2,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 83.9,
+    "conf": 0.94,
+    "top_row": 415.0,
+    "box": [
+      65,
+      219,
+      207,
+      786
+    ],
+    "level_pct": 83.9,
+    "confidence": 0.94
+  },
+  {
+    "t": 40.0,
+    "photo": "t041.jpg",
+    "secs": 5.5,
+    "n_bottle": 3,
+    "n_liquid": 2,
+    "status": "OK",
+    "level": 82.1,
+    "conf": 0.93,
+    "top_row": 429.0,
+    "box": [
+      65,
+      226,
+      209,
+      790
+    ],
+    "level_pct": 82.1,
+    "confidence": 0.93
+  },
+  {
+    "t": 41.0,
+    "photo": "t042.jpg",
+    "secs": 7.5,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 85.5,
+    "conf": 0.9,
+    "top_row": 414.0,
+    "box": [
+      55,
+      221,
+      210,
+      801
+    ],
+    "level_pct": 85.5,
+    "confidence": 0.9
+  },
+  {
+    "t": 42.0,
+    "photo": "t043.jpg",
+    "secs": 6.5,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 89.8,
+    "conf": 0.95,
+    "top_row": 406.0,
+    "box": [
+      40,
+      236,
+      198,
+      804
+    ],
+    "level_pct": 89.8,
+    "confidence": 0.95
+  },
+  {
+    "t": 43.0,
+    "photo": "t044.jpg",
+    "secs": 5.7,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 91.3,
+    "conf": 0.95,
+    "top_row": 376.0,
+    "box": [
+      63,
+      212,
+      209,
+      782
+    ],
+    "level_pct": 91.3,
+    "confidence": 0.95
+  },
+  {
+    "t": 44.0,
+    "photo": "t045.jpg",
+    "secs": 5.6,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 94.9,
+    "conf": 0.94,
+    "top_row": 364.0,
+    "box": [
+      63,
+      215,
+      212,
+      789
+    ],
+    "level_pct": 94.9,
+    "confidence": 0.94
+  },
+  {
+    "t": 45.0,
+    "photo": "t046.jpg",
+    "secs": 6.4,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 97.7,
+    "conf": 0.9,
+    "top_row": 334.0,
+    "box": [
+      68,
+      198,
+      213,
+      769
+    ],
+    "level_pct": 97.7,
+    "confidence": 0.9
+  },
+  {
+    "t": 46.0,
+    "photo": "t047.jpg",
+    "secs": 6.3,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 99.3,
+    "conf": 0.89,
+    "top_row": 339.0,
+    "box": [
+      48,
+      209,
+      207,
+      786
+    ],
+    "level_pct": 99.3,
+    "confidence": 0.89
+  },
+  {
+    "t": 47.0,
+    "photo": "t048.jpg",
+    "secs": 6.5,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.92,
+    "top_row": 323.0,
+    "box": [
+      53,
+      204,
+      210,
+      779
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.92
+  },
+  {
+    "t": 48.0,
+    "photo": "t049.jpg",
+    "secs": 6.1,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.88,
+    "top_row": 301.0,
+    "box": [
+      48,
+      198,
+      207,
+      772
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.88
+  },
+  {
+    "t": 49.0,
+    "photo": "t050.jpg",
+    "secs": 6.2,
+    "n_bottle": 2,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.9,
+    "top_row": 294.0,
+    "box": [
+      49,
+      197,
+      206,
+      775
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.9
+  },
+  {
+    "t": 50.0,
+    "photo": "t051.jpg",
+    "secs": 5.8,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.91,
+    "top_row": 264.5,
+    "box": [
+      50,
+      189,
+      200,
+      754
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.91
+  },
+  {
+    "t": 51.0,
+    "photo": "t052.jpg",
+    "secs": 5.5,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.89,
+    "top_row": 308.0,
+    "box": [
+      66,
+      238,
+      217,
+      820
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.89
+  },
+  {
+    "t": 52.0,
+    "photo": "t053.jpg",
+    "secs": 6.5,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.94,
+    "top_row": 247.0,
+    "box": [
+      23,
+      180,
+      168,
+      746
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.94
+  },
+  {
+    "t": 53.0,
+    "photo": "t054.jpg",
+    "secs": 6.0,
+    "n_bottle": 3,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.89,
+    "top_row": 218.0,
+    "box": [
+      0,
+      132,
+      48,
+      785
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.89
+  }
+]
