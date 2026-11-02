@@ -91,6 +91,16 @@ class LiveVision:
         self.client, self.calib, self.concepts = client, calib, concepts
         self.tol_px, self.run_id, self.ref_box = tol_px, run_id, ref_box
         self.last_error: str | None = None
+        self._last_box: Box | None = None
+
+    def recalibrate(self) -> bool:
+        """A human says the camera was moved on purpose: take the reference box and the auto calibration (approximate,
+        see auto_from_box; any explicit calibration is replaced) from the latest detected container box.
+        False when no container has been seen yet."""
+        if self._last_box is None:
+            return False
+        self.ref_box, self.calib = self._last_box, auto_from_box(self._last_box)
+        return True
 
     def read(self, frame, index=None) -> Analysis:
         try:
@@ -101,6 +111,7 @@ class LiveVision:
             return Analysis(estimate(None, None, _NO_CALIB))
         self.last_error = None
         if det is not None:
+            self._last_box = det[0]
             if self.ref_box is None:
                 self.ref_box = det[0]
             if self.calib is None:
@@ -156,8 +167,9 @@ class ReplayVision:
     """
 
     def __init__(self, source):
-        if isinstance(source, (str, Path)):
-            source = json.loads(Path(source).read_text(encoding="utf-8"))
+        self.path = Path(source) if isinstance(source, (str, Path)) else None  # where real frames may sit beside it
+        if self.path:
+            source = json.loads(self.path.read_text(encoding="utf-8"))
         if isinstance(source, dict):
             for key in ("readings", "results", "frames"):
                 if isinstance(source.get(key), list):
@@ -190,6 +202,10 @@ class ReplayVision:
     def times(self) -> list[float]:
         return list(self._ts) if self._ts is not None else [float(i) for i in range(len(self._recs))]
 
+    def rewind(self) -> None:
+        """Start index-based playback over (time-based playback has no state)."""
+        self._calls = 0
+
     def read(self, frame, index: int | None = None) -> Analysis:
         if index is None:
             if self._ts is not None:
@@ -202,5 +218,7 @@ class ReplayVision:
         status = r.get("status", "CAMERA_BLIND" if level is None else "OK")
         alertable = r.get("alertable", level is not None and status in ("OK", "EMPTY")
                           and conf >= ALERT_MIN_CONFIDENCE)
+        box = r.get("box")  # recorded container box, so the dashboard can draw it when no overlay picture exists
         return Analysis(Reading(None if level is None else float(level), conf, status, r.get("top_row"),
-                                bool(r.get("extrapolated", False)), bool(alertable)))
+                                bool(r.get("extrapolated", False)), bool(alertable)),
+                        tuple(float(v) for v in box) if box else None)

@@ -24,7 +24,13 @@ class PermitOutput:
 
     @property
     def permit(self) -> bool:
-        return self._client.read_permit() if self._client else self._permit
+        if not self._client:
+            return self._permit
+        try:
+            return self._permit and self._client.read_permit()
+        except Exception as e:  # an unreadable wire is not a permit: fail safe
+            log.error("permit read failed: %s", type(e).__name__)
+            return False
 
     def apply(self, actions) -> None:
         if interlock.Action.WRITE_PERMIT_FALSE in actions:
@@ -35,7 +41,10 @@ class PermitOutput:
                 self.relay_fault = True
                 log.error("relay cut failed: %s", type(e).__name__)
             if self._client:
-                self._client.clear_permit()
+                try:
+                    self._client.clear_permit()
+                except Exception as e:  # the in-process cut above already holds the pump off
+                    log.error("permit clear over the wire failed: %s", type(e).__name__)
 
     def rearm(self, grant) -> None:
         if self._server:

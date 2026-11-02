@@ -6,6 +6,8 @@ mints (single use; the permit module redeems it). Documented limit: a camera tha
 THEN a PLC spoof begins is undetected, because CAMERA_BLIND/LOW_CONFIDENCE only alarm and clear the
 mismatch timers; it never trips.
 """
+import secrets
+import threading
 from dataclasses import dataclass, replace
 from enum import Enum
 
@@ -132,24 +134,46 @@ def step(state: InterlockState, camera: Reading, plc_level: float, plc_age_s: fl
 
 
 _MINT = object()  # private key: only this module can build a ResetGrant
+_REDEEMED: set = set()  # ids of spent grants: a copy of a grant carries the same id, so it cannot be spent twice
+_REDEEM_LOCK = threading.Lock()
 
 
 class ResetGrant:
-    """Proof that a human reset was accepted. Minted only by reset_with_grant(); single use."""
+    """Proof that a human reset was accepted. Minted only by reset_with_grant(); single use.
 
-    __slots__ = ("_used",)
+    HONEST LIMIT: this is an in-process capability, NOT a security boundary. Python cannot stop code in the same
+    process from forging one (object.__new__(ResetGrant) plus setting the slot, or calling ResetGrant(_MINT)).
+    What it does: copy / deepcopy / pickle raise, `redeem` keeps a set of spent ids so a hand-made copy of a
+    grant cannot be redeemed twice, and static tests keep every other module from importing the mint key.
+    The real guarantee is on the wire: the Modbus server refuses any True write to the permit coil.
+    """
+
+    __slots__ = ("_id",)
 
     def __init__(self, key=None):
         if key is not _MINT:
             raise PermissionError("ResetGrant can only be issued by interlock.reset_with_grant")
-        self._used = False
+        self._id = secrets.token_hex(16)
+
+    def __copy__(self):
+        raise PermissionError("a ResetGrant cannot be copied")
+
+    def __deepcopy__(self, memo):
+        raise PermissionError("a ResetGrant cannot be copied")
+
+    def __reduce_ex__(self, protocol):
+        raise PermissionError("a ResetGrant cannot be pickled")
+
+    __reduce__ = __reduce_ex__
 
 
 def redeem(grant) -> None:
     """Consume a grant (the permit module calls this before re-arming). Anything else is refused."""
-    if not isinstance(grant, ResetGrant) or grant._used:
-        raise PermissionError("re-arm needs an unused ResetGrant from a successful human reset")
-    grant._used = True
+    gid = getattr(grant, "_id", None) if isinstance(grant, ResetGrant) else None
+    with _REDEEM_LOCK:
+        if gid is None or gid in _REDEEMED:
+            raise PermissionError("re-arm needs an unused ResetGrant from a successful human reset")
+        _REDEEMED.add(gid)
 
 
 def reset_with_grant(
