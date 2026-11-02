@@ -88,7 +88,7 @@ def test_spark_json_missing_usage_settles_at_reserve(parts):
     del body["usage"]
     client(parts, FakeTransport(body=body)).spark_json("p", {"type": "object"}, "r1")
     # est_in = ceil((1 + 18 bytes) / 3) + 256 = 263; 263 * 1.25 + 1024 * 4.25 = 4680.75 -> 4681
-    assert parts[0].spent_total() == 0.004681
+    assert parts[0].spent_total() == 0.035145  # reserve at SPARK_MAX_OUTPUT_TOKENS=8192
 
 
 def test_spark_estimate_uses_utf8_bytes(parts):
@@ -96,7 +96,7 @@ def test_spark_estimate_uses_utf8_bytes(parts):
     del body["usage"]
     client(parts, FakeTransport(body=body)).spark_json("é" * 31, {"type": "object"}, "r1")
     # bytes = 62 + 18 = 80; est_in = ceil(80 / 3) + 256 = 283; 283 * 1.25 + 4352 = 4705.75 -> 4706
-    assert parts[0].spent_total() == 0.004706
+    assert parts[0].spent_total() == 0.03517  # reserve at SPARK_MAX_OUTPUT_TOKENS=8192
 
 
 def test_spark_format_is_not_strict(parts):
@@ -301,3 +301,12 @@ def test_key_reaches_transport_but_never_cassette_logs_or_errors(parts, caplog, 
 def test_httpx_transport_is_a_lazy_factory():
     tr = httpx_transport("sk-" + "A1" * 12, "https://example.invalid/v1")  # never called
     assert callable(tr)
+
+
+def test_spark_output_parse_tolerates_leading_prose():
+    from agentwarden.meta import _loads_lenient
+    assert _loads_lenient('{"label": "SPOOF"}') == {"label": "SPOOF"}
+    assert _loads_lenient('I will check the frames. {"tool_request": []}') == {"tool_request": []}
+    import pytest
+    with pytest.raises(ValueError):
+        _loads_lenient("no json here")

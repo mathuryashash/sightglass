@@ -16,7 +16,7 @@ Transport = Callable[[str, dict, dict], "tuple[int, Any]"]
 MODES = ("replay", "record", "live")
 SAM_MODEL = "sam-3.1"
 SPARK_MODEL = "muse-spark-1.3"
-SPARK_MAX_OUTPUT_TOKENS = 1024
+SPARK_MAX_OUTPUT_TOKENS = 8192  # Spark reasons before answering (~250-1500 hidden tokens); 1024 truncated JSON
 _BYTES_PER_TOKEN = 3  # conservative: over-estimates tokens, so the reserve is a true worst case
 _HEADERS = {"Content-Type": "application/json"}  # auth is added inside httpx_transport only
 
@@ -144,7 +144,24 @@ class MetaClient:
             lambda: self.ledger.reserve(SPARK_MODEL, est_in, SPARK_MAX_OUTPUT_TOKENS,
                                         run_id, self.cap_usd),
             settle)
-        return json.loads(_output_text(resp))
+        return _loads_lenient(_output_text(resp))
+
+
+def _loads_lenient(text: str) -> Any:
+    """Spark sometimes prefixes a sentence before the JSON object. Parse the whole text, else the first
+    balanced {...} object in it; anything else raises ValueError (callers treat it as 'unavailable')."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    start = text.find("{")
+    while start != -1:
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text[start:])
+            return obj
+        except ValueError:
+            start = text.find("{", start + 1)
+    raise ValueError("no JSON object in model output")
 
 
 def _images_processed(resp: Any) -> int:
