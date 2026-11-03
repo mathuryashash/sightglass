@@ -1,0 +1,114 @@
+[
+  {
+    "photo": "IMG20261102194056.jpg",
+    "secs": 11.4,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.92,
+    "top_row": 64.0,
+    "box": [
+      249,
+      0,
+      512,
+      1011
+    ]
+  },
+  {
+    "photo": "IMG20261102194121.jpg",
+    "secs": 8.2,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 77.2,
+    "conf": 0.98,
+    "top_row": 407.0,
+    "box": [
+      251,
+      22,
+      500,
+      990
+    ]
+  },
+  {
+    "photo": "IMG20261102194139.jpg",
+    "secs": 8.7,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 59.0,
+    "conf": 0.98,
+    "top_row": 546.0,
+    "box": [
+      222,
+      13,
+      477,
+      1000
+    ]
+  },
+  {
+    "photo": "IMG20261102194153.jpg",
+    "secs": 5.4,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 44.4,
+    "conf": 0.96,
+    "top_row": 658.0,
+    "box": [
+      228,
+      11,
+      484,
+      1001
+    ]
+  },
+  {
+    "photo": "IMG20261102194203.jpg",
+    "secs": 7.8,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 34.4,
+    "conf": 0.96,
+    "top_row": 734.0,
+    "box": [
+      198,
+      14,
+      454,
+      998
+    ]
+  },
+  {
+    "photo": "IMG20261102194211.jpg",
+    "secs": 7.0,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 23.9,
+    "conf": 0.85,
+    "top_row": 809.0,
+    "box": [
+      279,
+      31,
+      530,
+      987
+    ]
+  },
+  {
+    "photo": "IMG20261102194219.jpg",
+    "secs": 6.2,
+    "n_bottle": 1,
+    "n_liquid": 0,
+    "status": "EMPTY",
+    "level": 0.0,
+    "conf": 0.47,
+    "top_row": null,
+    "box": [
+      238,
+      27,
+      488,
+      989
+    ]
+  }
+]
