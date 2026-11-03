@@ -302,9 +302,12 @@ def test_after_reset_new_trip_needs_fresh_timer():
 
 
 def random_reading(rng):
-    kind = rng.choice(["ok", "ok", "ok", "low", "blind", "empty"])
+    kind = rng.choice(["ok", "ok", "ok", "low", "blind", "empty", "occluded"])
     if kind == "blind":
         return blind()
+    if kind == "occluded":
+        return Reading(rng.choice([None, rng.uniform(-10, 120)]), rng.uniform(0, 1), "OCCLUDED", None, False, False,
+                       "hand/occluded")
     lvl = rng.uniform(-10, 120)
     if kind == "low":
         return Reading(lvl, rng.uniform(0, 0.5), "LOW_CONFIDENCE", None, False, False)

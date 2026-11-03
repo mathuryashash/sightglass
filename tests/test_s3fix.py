@@ -244,7 +244,9 @@ def _camera(mode, truth, s):
         return blind()
     if s["u"] < 0.3:
         return Reading(s["lvl"], s["conf"] * 0.5, "LOW_CONFIDENCE", None, False, False)
-    status = "EMPTY" if s["u"] < 0.4 else "OK"
+    if s["u"] < 0.4:  # a hand over the bottle: whatever level rides along, it is not alertable
+        return Reading(s["lvl"] if s["noise"] > 0 else None, s["conf"], "OCCLUDED", None, False, False, "hand/occluded")
+    status = "EMPTY" if s["u"] < 0.5 else "OK"
     return Reading(s["lvl"], s["conf"], status, None, False, s["conf"] >= 0.5)
 
 
