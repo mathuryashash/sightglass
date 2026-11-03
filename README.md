@@ -1,6 +1,6 @@
 SightGlass uses a phone camera and Meta SAM 3.1 as an independent witness of a tank's level. When the controller's reported level and the camera disagree, a fixed safety rule latches the pump off. Muse Spark then explains what probably happened, as advice to a person.
 
-![SightGlass dashboard at the moment of a trip: the controller says 24 %, the camera sees 70 %, the pump is locked off](docs/dashboard_trip.png)
+![SightGlass dashboard at the moment of a trip: the controller says 41 %, the camera sees 86 %, the pump is locked off](docs/dashboard_trip.png)
 
 Everything here runs against a **simulated** controller on 127.0.0.1. No real pump, tank or PLC is connected. The camera footage and the SAM readings are real (a hand-held bottle of orange liquid, filmed on a phone). The tank, the PLC, the Modbus link and the injected faults are simulated.
 
