@@ -1,0 +1,65 @@
+[
+  {
+    "model": "meta-models/muse-spark-open (Baseten)",
+    "scenario": "freeze",
+    "trip": {
+      "reason": "DIVERGENCE",
+      "t": 32.0
+    },
+    "rule": "SPOOF",
+    "secs": 10.8,
+    "label": "SPOOF",
+    "conf": 0.89,
+    "evidence": [
+      "plc flat 40.9 from t=20.0 to t=32.0 (plc_flat_s 12.0) while camera climbs 41.8 to 65.4",
+      "plc repeats camera with 1s delay: plc 62.4 at t=2.0 = camera 62.4 at t=1.0; plc 20.2 at t=3.0 = camera 20.2 at t=2.0",
+      "divergence trip at t=32.0 with end_abs_diff 24.5 and max_abs_diff 42.4, limits 15.0 pts for 5.0s",
+      "camera shows steady rise 15.6 at t=9.0 to 65.4 at t=32.0 with OK 30 frames vs EMPTY 3"
+    ],
+    "note": "Controller froze near 41% while camera showed tank steadily filling past 65%. Earlier the controller replayed camera values 1 second late. Safety tripped on divergence so overflow was prevented, but controller reading is unreliable.",
+    "check": "Visually verify tank with sight glass/tape vs HMI and have controls check PLC program and logs for replay/freeze.",
+    "tool_calls": 0
+  },
+  {
+    "model": "meta-models/muse-spark-open (Baseten)",
+    "scenario": "drift",
+    "trip": {
+      "reason": "HIGH_HIGH",
+      "t": 46.0
+    },
+    "rule": "SPOOF",
+    "secs": 13.5,
+    "label": "SPOOF",
+    "conf": 0.86,
+    "evidence": [
+      "plc 82.1 at t46 vs camera 99.3 at t46 end_abs_diff 17.2 exceeds divergence 15.0",
+      "plc repeats old camera values: plc 62.4 at t2 equals camera 62.4 at t1 and plc 20.2 at t3 equals camera 20.2 at t2",
+      "camera net change 99.3 to 99.3 max vs plc net change 62.1 to 82.1 max with growing lag after t20",
+      "trip HIGH_HIGH at t46 with camera 97.7 at t45 and 99.3 at t46 above 95.0 while plc 79.9-82.1 below"
+    ],
+    "note": "The tank really filled to 99% and caused the safety trip, but the controller display stayed lower at about 82% and lagged behind. The controller appears to be repeating old camera readings with increasing delay, so it did not see the high level.",
+    "check": "Visually verify actual tank level with sight glass and compare to plc reading; leave pump off after trip.",
+    "tool_calls": 0
+  },
+  {
+    "model": "meta-models/muse-spark-open (Baseten)",
+    "scenario": "replay",
+    "trip": {
+      "reason": "DIVERGENCE",
+      "t": 25.0
+    },
+    "rule": "SPOOF",
+    "secs": 7.7,
+    "label": "SPOOF",
+    "conf": 0.89,
+    "evidence": [
+      "PLC flat at 20.0 from 20.0s to 25.0s (5.0s) while camera rose 41.8 to 51.2",
+      "End diff 31.2 at 25.0s exceeds divergence limit 15.0 for 5.0s trip DIVERGENCE",
+      "PLC 62.4 at 2.0s equals camera 62.4 at 1.0s; PLC 20.2 at 3.0s equals camera 20.2 at 2.0s (1s replay)",
+      "Camera net +51.2 vs PLC net 0.0 with pump on 0.96: camera tracks fill, PLC stuck"
+    ],
+    "note": "Camera shows tank filling steadily to 51.2%, but controller is stuck at 20% and tripped on divergence. Treat controller level as unreliable; tank may be higher than shown.",
+    "check": "Check sight glass / manual gauge vs PLC 20.0% and camera 51.2% at 25s and verify pump is actually running.",
+    "tool_calls": 0
+  }
+]
