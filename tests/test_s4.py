@@ -180,7 +180,7 @@ class FakeClient:
 
     def sam_image(self, image_bytes, concept, run_id):
         self.calls.append(concept)
-        text = self.texts[concept]
+        text = self.texts.get(concept, "")  # "hand": nothing found
         return {"output": [{"type": "message", "content": [{"type": "output_text", "text": text}]}]}
 
 
@@ -197,7 +197,7 @@ def calib():
 def test_read_level_makes_two_sam_calls_and_estimates():
     v = mod("vision")
     c = FakeClient(liquid(30))
-    r = v.read_level(frame(), c, calib())
+    r = v.read_level(frame(), c, calib(), occluder_concept=None)  # the 3-call path is tested in test_s6b
     assert sorted(c.calls) == ["orange liquid", "plastic bottle"]
     assert r.status == "OK" and r.alertable
     assert r.level_pct == pytest.approx((55 - 30) / 43 * 100, abs=1.5)

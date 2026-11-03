@@ -62,6 +62,14 @@ def initial_state() -> InterlockState:
     return InterlockState()
 
 
+def unverified_reason(camera: Reading) -> str:
+    """Why step() treats this reading as unverified (alarm only, timers cleared, never a trip). "" when it counts.
+    OCCLUDED needs no special branch in step(): it is never alertable, exactly like LOW_CONFIDENCE."""
+    if camera.alertable and camera.level_pct is not None and camera.status != "OCCLUDED":
+        return ""
+    return {"OCCLUDED": "occluded", "CAMERA_BLIND": "blind"}.get(camera.status, "low confidence")
+
+
 def _slope(hist) -> float:
     n = len(hist)
     mt = sum(t for t, _ in hist) / n
@@ -90,7 +98,7 @@ def step(state: InterlockState, camera: Reading, plc_level: float, plc_age_s: fl
     if state.last_t is not None and t < state.last_t:  # clock went backwards: drop stale timers
         state = replace(state, mismatch_since=None, cam_hist=(), plc_hist=())
 
-    alertable = bool(camera.alertable) and camera.level_pct is not None
+    alertable = bool(camera.alertable) and camera.level_pct is not None and camera.status != "OCCLUDED"
     stale = plc_age_s > cfg.plc_stale_s
     if stale:
         actions.append(Action.ALARM_PLC_STALE)

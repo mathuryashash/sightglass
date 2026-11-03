@@ -75,7 +75,7 @@ The recorded readings are played through `Pipeline` with a fault injected on the
 | drift | 30 | 46 | HIGH_HIGH | 99.3 | 11.2 | NO | -1 |
 | replay | 12 | 21 | DIVERGENCE | 44.5 | 24.5 | yes | 24 |
 | replay | 20 | 25 | DIVERGENCE | 51.2 | 31.2 | yes | 20 |
-| replay | 30 | 34 | RATE | 70.2 | 52.2 | yes | 11 |
+| replay | 30 | 35 | RATE | 71.7 | 54.4 | yes | 10 |
 
 No fault injected: tripped = True at t = 46 s (HIGH_HIGH), because the real bottle itself fills to the top.
 
@@ -100,7 +100,7 @@ Two different things, kept apart.
 
 ### model (recorded Muse Spark calls)
 
-The recorded cassette is replayed keylessly (no network) for freeze, drift and replay at fault start 12 and 20: 6 incidents (the cassette folder holds 8 files; each incident re-derives its own prompt, so a file no incident asks for is not used). Ground truth for all of them is SPOOF.
+The recorded cassette is replayed keylessly (no network) for freeze, drift and replay at fault start 12 and 20, on the readings as they were when the calls were recorded (S6b occluder check and plausibility guard off: a cassette is keyed to the exact prompt and the guard drops pour frame t = 2): 6 incidents (the cassette folder holds 8 files; each incident re-derives its own prompt, so a file no incident asks for is not used). Ground truth for all of them is SPOOF.
 
 | fault | starts t | trip t s | state | model label | confidence | rule label | agrees with rule | reason |
 |---|---|---|---|---|---|---|---|---|
@@ -137,8 +137,28 @@ A naive reader (HSV orange threshold inside the container box, lowest continuous
 
 Mean absolute difference between the two readers: 2.9 points. The comparison holds for this one clip only and says nothing about other bottles, liquids or lighting.
 
+## 8. Camera robustness (real clips)
+
+Two recordings with live SAM 3.1 at 2 fps, a steady phone and a full orange bottle (so the true level is 100 % in both; no tape, this is the owner's statement, not a measurement). **hand**: a hand sweeps in front of the bottle twice (22 frames, 10.5 s); the liquid mask gets cut and SAM reports 11-82 % with status OK. **lights**: the room light goes off twice (27 frames, 13.0 s); SAM finds nothing. The fix has two parts. (1) OCCLUDED: a "hand" box covering at least 20 % of the container box makes the frame OCCLUDED: no level, never alertable, alarm CAMERA_UNVERIFIED, mismatch timers reset, never a trip. In the recordings that is the stored `hand_overlap` (SAM concept "hand", confidence 0.5 or more); in live mode it is a third SAM image call per frame (+50 % image cost over the two-call path; `occluder_concept=None` drops it). (2) Plausibility guard: a change faster than 8 points/s between alertable readings is LOW_CONFIDENCE ("implausible jump") for that frame.
+
+| clip | frames | OK | OCCLUDED | BLIND | LOW_CONF | OK before the fix | false trips (default N_s 5 s) | false trips before | false trips at N_s 2 s: before / after | max abs(reading - 100) among OK: before / after |
+|---|---|---|---|---|---|---|---|---|---|---|
+| hand | 22 | 6 | 16 | 0 | 0 | 21 | 0 | 0 | 1 / 0 | 88.6 / 0.0 |
+| lights | 27 | 16 | 0 | 11 | 0 | 16 | 0 | 0 | 0 / 0 | 0.0 / 0.0 |
+
+False trips are counted with the PLC reading the true 100 % and HIGH_HIGH switched off (the bottle really is full; a trip on a full bottle would be correct, not false). Before the fix, a hand left the camera at "OK" and as far as 88.6 points from the truth. It did not trip at the default N_s = 5 s only because each sweep lasted 4 s or less and one low-confidence frame (0.43) cut the first one; with N_s = 2 s the old behaviour trips (1 of 1 run) and the fixed one does not (0). The plausibility guard alone is not enough: with it but without the hand check, 9 frames stay OK and the worst is still 88.6 points off, because a mask that stays wrong for two frames looks like a real change. After the fix the 6 frames still marked OK read within 0.0 points of 100. The 16 OCCLUDED frames are exactly the frames the recorder marked with a hand overlap of 0.20 or more.
+
+Lights: the 11 dark frames are CAMERA_BLIND (alarm only, no trip, the HMI says CAMERA BLOCKED - NO TRIP), the readings return to 100 % when the light returns (16 OK frames, worst 0.0 points off). Lights needed no new rule; the number shown is the existing blind behaviour on a real recording.
+
+Combined: the hand clip plus a frozen PLC (fault from t = 0, PLC stuck at the tank's 20 % while the bottle is full), with 10 s of clean frames appended (copies of the last real frame, so these are not new data). HIGH_HIGH is off. Fixed: no trip during the occlusion; trip = True at t = 15.0 s (DIVERGENCE, on an OK frame reading 100 %), the last OCCLUDED frame was t = 9.5 s, so the 5 s divergence timer ran on clean frames only (clean from t = 10.0 s). Before the fix the same run tripped at t = 10.0 s (DIVERGENCE), 5.0 s earlier, with the timer fed by hand-corrupted readings: right fault, but the verdict leaned on frames that were not trustworthy.
+
+Pour clip check (the fix must not break a real fill): 54 frames, the plausibility guard flagged 1 (t = 2, the hand entering the shot), the hand check flagged 0. After the entry frames 45 of 45 frames stay OK and the real pour peaks at 5.6 points/s, under the 8 points/s limit (the entry frames alone jump 42 points/s).
+
 ## Limits
 
+- Camera robustness (section 8) rests on one bottle, one hand, one indoor light and two short clips (22 and 27 frames). Other occluders (a sleeve, a cloth), a hand SAM does not call "hand", or a partial shadow are untested. The truth of 100 % is the owner's statement, not a measurement.
+- The occluder concept adds a third SAM image per frame (+50 % image cost). A hand that covers less than 20 % of the bottle is not OCCLUDED; the plausibility guard (8 points/s, from a pour that peaked at 5.6) is the only net there, and a wrong mask that persists for two frames passes it.
+- The combined test appends 10 s of copied clean frames; the hand clip alone is too short for the 5 s divergence timer to run on clean frames.
 - No tape ground truth: level quality uses a monotonic-pour proxy and eyeballed approximate levels, so no accuracy figure is claimed.
 - One hand-held clip and one bottle with one orange liquid; the first frames show a hand entering the shot.
 - The PLC, the tank and the camera noise are simulated. Detection and false-alarm numbers describe the rules against a gaussian fake camera.

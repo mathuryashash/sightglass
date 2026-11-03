@@ -928,16 +928,88 @@
    },
    {
     "before_95": true,
-    "camera_at_trip": 70.2,
+    "camera_at_trip": 71.7,
     "fault_start": 30,
-    "gap_at_trip": 52.2,
-    "margin_s": 11.0,
+    "gap_at_trip": 54.400000000000006,
+    "margin_s": 10.0,
     "scenario": "replay",
     "trip_reason": "RATE",
-    "trip_t": 34.0,
+    "trip_t": 35.0,
     "tripped": true
    }
   ]
+ },
+ "robustness": {
+  "combined": {
+   "appended_clean_s": 10.0,
+   "before": {
+    "camera_at_trip": 100.0,
+    "last_occluded_t": null,
+    "trip_during_occlusion": false,
+    "trip_reason": "DIVERGENCE",
+    "trip_status": "OK",
+    "trip_t": 10.0,
+    "tripped": true
+   },
+   "camera_at_trip": 100.0,
+   "clip_s": 20.5,
+   "last_occluded_t": 9.5,
+   "trip_during_occlusion": false,
+   "trip_reason": "DIVERGENCE",
+   "trip_status": "OK",
+   "trip_t": 15.0,
+   "tripped": true
+  },
+  "hand": {
+   "blind": 0,
+   "duration_s": 10.5,
+   "empty": 0,
+   "false_trips": 0,
+   "false_trips_before": 0,
+   "false_trips_before_n2": 1,
+   "false_trips_n2": 0,
+   "frames": 22,
+   "frames_ok_before": 21,
+   "low_conf": 0,
+   "max_abs_err_ok_after": 0.0,
+   "max_abs_err_ok_before": 88.6,
+   "max_abs_err_ok_guard_only": 88.6,
+   "occluded": 16,
+   "ok": 6,
+   "ok_guard_only": 9
+  },
+  "lights": {
+   "blind": 11,
+   "duration_s": 13.0,
+   "empty": 0,
+   "false_trips": 0,
+   "false_trips_before": 0,
+   "false_trips_before_n2": 0,
+   "false_trips_n2": 0,
+   "frames": 27,
+   "frames_ok_before": 16,
+   "low_conf": 0,
+   "max_abs_err_ok_after": 0.0,
+   "max_abs_err_ok_before": 0.0,
+   "max_abs_err_ok_guard_only": 0.0,
+   "occluded": 0,
+   "ok": 16,
+   "ok_guard_only": 16
+  },
+  "max_rate_pts_s": 8.0,
+  "overlap_threshold": 0.2,
+  "pour_guard": {
+   "flagged": 1,
+   "flagged_t": [
+    2.0
+   ],
+   "frames": 54,
+   "frames_after_entry": 45,
+   "frames_ok_after_entry": 45,
+   "max_rate_after_entry": 5.6,
+   "max_rate_incl_entry": 42.2,
+   "occluded": 0
+  }
  },
  "stills": {
   "max_abs_diff": 0.3999999999999986,

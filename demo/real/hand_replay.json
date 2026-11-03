@@ -1,0 +1,583 @@
+[
+  {
+    "t": 0.0,
+    "photo": "t001.jpg",
+    "secs": 6.5,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.95,
+    "top_row": 274.0,
+    "box": [
+      183,
+      200,
+      306,
+      659
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.95,
+    "hand_boxes": [],
+    "hand_overlap": 0.0
+  },
+  {
+    "t": 0.5,
+    "photo": "t002.jpg",
+    "secs": 5.6,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.95,
+    "top_row": 274.0,
+    "box": [
+      183,
+      200,
+      306,
+      659
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.95,
+    "hand_boxes": [],
+    "hand_overlap": 0.0
+  },
+  {
+    "t": 1.0,
+    "photo": "t003.jpg",
+    "secs": 6.1,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.91,
+    "top_row": 273.0,
+    "box": [
+      183,
+      200,
+      306,
+      659
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.91,
+    "hand_boxes": [
+      [
+        0,
+        72,
+        140,
+        336
+      ]
+    ],
+    "hand_overlap": 0.0
+  },
+  {
+    "t": 1.5,
+    "photo": "t004.jpg",
+    "secs": 5.7,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 37.2,
+    "conf": 0.77,
+    "top_row": 527.0,
+    "box": [
+      183,
+      199,
+      306,
+      661
+    ],
+    "level_pct": 37.2,
+    "confidence": 0.77,
+    "hand_boxes": [
+      [
+        106,
+        337,
+        423,
+        628
+      ]
+    ],
+    "hand_overlap": 0.63
+  },
+  {
+    "t": 2.0,
+    "photo": "t005.jpg",
+    "secs": 4.8,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 13.9,
+    "conf": 0.81,
+    "top_row": 611.0,
+    "box": [
+      183,
+      199,
+      306,
+      661
+    ],
+    "level_pct": 13.9,
+    "confidence": 0.81,
+    "hand_boxes": [
+      [
+        84,
+        407,
+        375,
+        699
+      ]
+    ],
+    "hand_overlap": 0.55
+  },
+  {
+    "t": 2.5,
+    "photo": "t006.jpg",
+    "secs": 4.3,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 11.4,
+    "conf": 0.8,
+    "top_row": 619.0,
+    "box": [
+      183,
+      199,
+      306,
+      660
+    ],
+    "level_pct": 11.4,
+    "confidence": 0.8,
+    "hand_boxes": [
+      [
+        93,
+        280,
+        357,
+        643
+      ]
+    ],
+    "hand_overlap": 0.787
+  },
+  {
+    "t": 3.0,
+    "photo": "t007.jpg",
+    "secs": 4.9,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 23.6,
+    "conf": 0.43,
+    "top_row": 575.0,
+    "box": [
+      183,
+      199,
+      306,
+      660
+    ],
+    "level_pct": 23.6,
+    "confidence": 0.43,
+    "hand_boxes": [
+      [
+        66,
+        342,
+        342,
+        728
+      ]
+    ],
+    "hand_overlap": 0.69
+  },
+  {
+    "t": 3.5,
+    "photo": "t008.jpg",
+    "secs": 4.6,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 31.7,
+    "conf": 0.79,
+    "top_row": 546.0,
+    "box": [
+      183,
+      199,
+      306,
+      660
+    ],
+    "level_pct": 31.7,
+    "confidence": 0.79,
+    "hand_boxes": [
+      [
+        96,
+        321,
+        369,
+        673
+      ]
+    ],
+    "hand_overlap": 0.735
+  },
+  {
+    "t": 4.0,
+    "photo": "t009.jpg",
+    "secs": 4.3,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 23.1,
+    "conf": 0.82,
+    "top_row": 577.0,
+    "box": [
+      183,
+      199,
+      306,
+      660
+    ],
+    "level_pct": 23.1,
+    "confidence": 0.82,
+    "hand_boxes": [
+      [
+        88,
+        326,
+        368,
+        671
+      ]
+    ],
+    "hand_overlap": 0.725
+  },
+  {
+    "t": 4.5,
+    "photo": "t010.jpg",
+    "secs": 5.0,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 32.0,
+    "conf": 0.79,
+    "top_row": 545.0,
+    "box": [
+      183,
+      199,
+      306,
+      660
+    ],
+    "level_pct": 32.0,
+    "confidence": 0.79,
+    "hand_boxes": [
+      [
+        93,
+        306,
+        374,
+        639
+      ]
+    ],
+    "hand_overlap": 0.722
+  },
+  {
+    "t": 5.0,
+    "photo": "t011.jpg",
+    "secs": 4.8,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 39.8,
+    "conf": 0.81,
+    "top_row": 517.0,
+    "box": [
+      184,
+      199,
+      307,
+      660
+    ],
+    "level_pct": 39.8,
+    "confidence": 0.81,
+    "hand_boxes": [
+      [
+        105,
+        298,
+        385,
+        629
+      ]
+    ],
+    "hand_overlap": 0.718
+  },
+  {
+    "t": 5.5,
+    "photo": "t012.jpg",
+    "secs": 4.1,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 59.8,
+    "conf": 0.88,
+    "top_row": 445.5,
+    "box": [
+      184,
+      200,
+      306,
+      660
+    ],
+    "level_pct": 59.8,
+    "confidence": 0.88,
+    "hand_boxes": [
+      [
+        0,
+        91,
+        264,
+        465
+      ]
+    ],
+    "hand_overlap": 0.378
+  },
+  {
+    "t": 6.0,
+    "photo": "t013.jpg",
+    "secs": 4.1,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.95,
+    "top_row": 273.0,
+    "box": [
+      185,
+      199,
+      305,
+      660
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.95,
+    "hand_boxes": [],
+    "hand_overlap": 0.0
+  },
+  {
+    "t": 6.5,
+    "photo": "t014.jpg",
+    "secs": 5.0,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 81.8,
+    "conf": 0.89,
+    "top_row": 366.0,
+    "box": [
+      184,
+      199,
+      305,
+      660
+    ],
+    "level_pct": 81.8,
+    "confidence": 0.89,
+    "hand_boxes": [
+      [
+        0,
+        127,
+        258,
+        419
+      ]
+    ],
+    "hand_overlap": 0.292
+  },
+  {
+    "t": 7.0,
+    "photo": "t015.jpg",
+    "secs": 6.5,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 61.1,
+    "conf": 0.81,
+    "top_row": 440.0,
+    "box": [
+      184,
+      198,
+      303,
+      660
+    ],
+    "level_pct": 61.1,
+    "confidence": 0.81,
+    "hand_boxes": [
+      [
+        115,
+        237,
+        413,
+        598
+      ]
+    ],
+    "hand_overlap": 0.781
+  },
+  {
+    "t": 7.5,
+    "photo": "t016.jpg",
+    "secs": 4.1,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 35.6,
+    "conf": 0.79,
+    "top_row": 532.0,
+    "box": [
+      184,
+      199,
+      305,
+      660
+    ],
+    "level_pct": 35.6,
+    "confidence": 0.79,
+    "hand_boxes": [
+      [
+        65,
+        287,
+        356,
+        665
+      ]
+    ],
+    "hand_overlap": 0.809
+  },
+  {
+    "t": 8.0,
+    "photo": "t017.jpg",
+    "secs": 8.1,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 33.1,
+    "conf": 0.83,
+    "top_row": 541.0,
+    "box": [
+      183,
+      199,
+      306,
+      660
+    ],
+    "level_pct": 33.1,
+    "confidence": 0.83,
+    "hand_boxes": [
+      [
+        79,
+        269,
+        364,
+        622
+      ]
+    ],
+    "hand_overlap": 0.766
+  },
+  {
+    "t": 8.5,
+    "photo": "t018.jpg",
+    "secs": 6.0,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 47.0,
+    "conf": 0.82,
+    "top_row": 491.0,
+    "box": [
+      184,
+      199,
+      304,
+      660
+    ],
+    "level_pct": 47.0,
+    "confidence": 0.82,
+    "hand_boxes": [
+      [
+        92,
+        247,
+        374,
+        590
+      ]
+    ],
+    "hand_overlap": 0.744
+  },
+  {
+    "t": 9.0,
+    "photo": "t019.jpg",
+    "secs": 6.1,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 32.8,
+    "conf": 0.83,
+    "top_row": 542.0,
+    "box": [
+      184,
+      199,
+      306,
+      660
+    ],
+    "level_pct": 32.8,
+    "confidence": 0.83,
+    "hand_boxes": [
+      [
+        63,
+        239,
+        352,
+        578
+      ]
+    ],
+    "hand_overlap": 0.735
+  },
+  {
+    "t": 9.5,
+    "photo": "t020.jpg",
+    "secs": 3.6,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 75.9,
+    "conf": 0.8,
+    "top_row": 387.5,
+    "box": [
+      184,
+      199,
+      304,
+      661
+    ],
+    "level_pct": 75.9,
+    "confidence": 0.8,
+    "hand_boxes": [
+      [
+        67,
+        159,
+        366,
+        477
+      ]
+    ],
+    "hand_overlap": 0.602
+  },
+  {
+    "t": 10.0,
+    "photo": "t021.jpg",
+    "secs": 3.9,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.96,
+    "top_row": 273.0,
+    "box": [
+      183,
+      199,
+      305,
+      659
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.96,
+    "hand_boxes": [],
+    "hand_overlap": 0.0
+  },
+  {
+    "t": 10.5,
+    "photo": "t022.jpg",
+    "secs": 5.3,
+    "n_bottle": 1,
+    "n_liquid": 1,
+    "status": "OK",
+    "level": 100.0,
+    "conf": 0.96,
+    "top_row": 273.0,
+    "box": [
+      184,
+      199,
+      306,
+      659
+    ],
+    "level_pct": 100.0,
+    "confidence": 0.96,
+    "hand_boxes": [],
+    "hand_overlap": 0.0
+  }
+]

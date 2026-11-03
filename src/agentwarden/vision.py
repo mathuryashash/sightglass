@@ -1,4 +1,8 @@
-"""Frame -> Reading. Live path: 2 SAM calls (liquid, container) -> parse -> pick -> estimate.
+"""Frame -> Reading. Live path: SAM calls (liquid, container, and a "hand" occluder) -> parse -> pick -> estimate.
+
+COST: the occluder concept is a third SAM image per frame (+50 % over the two-call path; set
+occluder_concept=None to drop it). When a hand box covers >= OCCLUDER_OVERLAP of the container the reading is
+OCCLUDED: never a level, never alertable. It is only asked when a container was found.
 
 Replay path (ReplayVision) returns recorded Readings so the whole pipeline runs with no network and no key.
 """
@@ -12,7 +16,8 @@ from pathlib import Path
 
 import numpy as np
 
-from agentwarden.level import ALERT_MIN_CONFIDENCE, Box, Calibration, Reading, camera_moved, estimate
+from agentwarden.level import (ALERT_MIN_CONFIDENCE, MAX_RATE_PTS_S, Box, Calibration, RateGuard, Reading,
+                               box_overlap, camera_moved, estimate, occluded)
 from agentwarden.meta import _output_text
 from agentwarden.sam import parse_sam
 from agentwarden.select import pick
@@ -20,6 +25,8 @@ from agentwarden.select import pick
 log = logging.getLogger(__name__)
 
 CONCEPTS = ("orange liquid", "plastic bottle")  # (liquid, container)
+OCCLUDER = "hand"
+OCCLUDER_MIN_CONF = 0.5
 CAMERA_MOVED_TOL_PX = 20.0  # container-box edge shift, in 640-wide frame pixels
 _NO_CALIB = Calibration((0.0, 1.0), (100.0, 0.0))  # only used for CAMERA_BLIND, which ignores it
 
@@ -30,6 +37,7 @@ class Analysis:
     box: Box | None = None
     mask: np.ndarray | None = None  # liquid mask, frame shape, for the dashboard overlay
     camera_moved: bool = False
+    hand_boxes: tuple = ()  # occluder boxes (conf >= OCCLUDER_MIN_CONF), for the dashboard
 
 
 def auto_from_box(box: Box, shoulder_frac: float = 0.22) -> Calibration:
@@ -43,8 +51,8 @@ def auto_from_box(box: Box, shoulder_frac: float = 0.22) -> Calibration:
     return Calibration.from_points([(bottom, 0.0), (shoulder, 100.0)])
 
 
-def _detect(frame, client, concepts, run_id):
-    """Run both SAM prompts; returns (box, liquid_mask, liquid_conf, container_conf) or None (no container)."""
+def _detect(frame, client, concepts, run_id, occluder_concept=OCCLUDER):
+    """Run the SAM prompts; returns (box, liquid_mask, liquid_conf, container_conf, hand_boxes) or None (no container)."""
     _, jpg, w, h = frame
     liquid_concept, container_concept = concepts
     liq = parse_sam(_output_text(client.sam_image(jpg, liquid_concept, run_id)), w, h)
@@ -53,29 +61,36 @@ def _detect(frame, client, concepts, run_id):
     if picked is None:
         return None
     box, mask, liq_conf = picked
-    return box, mask, liq_conf, max(d.confidence or 0.0 for d in cont)
+    hands = ()
+    if occluder_concept:
+        occ = parse_sam(_output_text(client.sam_image(jpg, occluder_concept, run_id)), w, h)
+        hands = tuple(d.box for d in occ if (d.confidence or 0.0) >= OCCLUDER_MIN_CONF)
+    return box, mask, liq_conf, max(d.confidence or 0.0 for d in cont), hands
 
 
 def _finish(det, calib, ref_box, tol_px) -> Analysis:
     if det is None:
         return Analysis(estimate(None, None, _NO_CALIB))
-    box, mask, liq_conf, cont_conf = det
+    box, mask, liq_conf, cont_conf, hands = det
     reading = estimate(mask, box, calib, liq_conf, cont_conf)
     moved = ref_box is not None and camera_moved(box, ref_box, tol_px)
     if moved:  # the calibration no longer applies: never act on this level
-        reading = replace(reading, status="LOW_CONFIDENCE", alertable=False)
-    return Analysis(reading, box, mask, moved)
+        reading = replace(reading, status="LOW_CONFIDENCE", alertable=False, reason="camera moved")
+    reading = occluded(box_overlap(box, hands)) or reading  # a hand over the bottle beats any level
+    return Analysis(reading, box, mask, moved, hands)
 
 
 def analyze(frame, client, calib: Calibration, concepts=CONCEPTS, ref_box: Box | None = None,
-            tol_px: float = CAMERA_MOVED_TOL_PX, run_id: str = "sightglass") -> Analysis:
-    return _finish(_detect(frame, client, concepts, run_id), calib, ref_box, tol_px)
+            tol_px: float = CAMERA_MOVED_TOL_PX, run_id: str = "sightglass",
+            occluder_concept: str | None = OCCLUDER) -> Analysis:
+    return _finish(_detect(frame, client, concepts, run_id, occluder_concept), calib, ref_box, tol_px)
 
 
 def read_level(frame, client, calib: Calibration, concepts=CONCEPTS, ref_box: Box | None = None,
-               tol_px: float = CAMERA_MOVED_TOL_PX, run_id: str = "sightglass") -> Reading:
-    """One frame -> Reading via 2 SAM calls on `client` (a MetaClient)."""
-    return analyze(frame, client, calib, concepts, ref_box, tol_px, run_id).reading
+               tol_px: float = CAMERA_MOVED_TOL_PX, run_id: str = "sightglass",
+               occluder_concept: str | None = OCCLUDER) -> Reading:
+    """One frame -> Reading via 3 SAM calls on `client` (a MetaClient); 2 with occluder_concept=None."""
+    return analyze(frame, client, calib, concepts, ref_box, tol_px, run_id, occluder_concept).reading
 
 
 class LiveVision:
@@ -87,8 +102,11 @@ class LiveVision:
 
     def __init__(self, client, calib: Calibration | None = None, concepts=CONCEPTS,
                  tol_px: float = CAMERA_MOVED_TOL_PX, run_id: str = "sightglass",
-                 ref_box: Box | None = None):
+                 ref_box: Box | None = None, occluder_concept: str | None = OCCLUDER,
+                 max_rate_pts_s: float | None = MAX_RATE_PTS_S):
         self.client, self.calib, self.concepts = client, calib, concepts
+        self.occluder_concept = occluder_concept
+        self.guard = RateGuard(max_rate_pts_s) if max_rate_pts_s else None
         self.tol_px, self.run_id, self.ref_box = tol_px, run_id, ref_box
         self.last_error: str | None = None
         self._last_box: Box | None = None
@@ -104,7 +122,7 @@ class LiveVision:
 
     def read(self, frame, index=None) -> Analysis:
         try:
-            det = _detect(frame, self.client, self.concepts, self.run_id)
+            det = _detect(frame, self.client, self.concepts, self.run_id, self.occluder_concept)
         except Exception as e:  # ponytail: any failure = camera unverified; type name only, never the body
             self.last_error = type(e).__name__
             log.warning("vision call failed: %s", self.last_error)
@@ -116,7 +134,10 @@ class LiveVision:
                 self.ref_box = det[0]
             if self.calib is None:
                 self.calib = auto_from_box(det[0])
-        return _finish(det, self.calib, self.ref_box, self.tol_px)
+        a = _finish(det, self.calib, self.ref_box, self.tol_px)
+        if self.guard:
+            a = replace(a, reading=self.guard.check(a.reading, float(frame[0])))
+        return a
 
 
 class LatestWorker:
@@ -164,9 +185,14 @@ class ReplayVision:
 
     Each record: {"t"?, "level_pct", "confidence", "status", "top_row"?, "alertable"?}. Records with "t"
     are looked up by frame time (last record at or before it); otherwise by frame index.
+    Optional "hand_overlap" (share of the container box a hand box covers) or "hand_boxes" + "box": at or above
+    OCCLUDER_OVERLAP the frame is OCCLUDED (occluder=False replays the old behaviour). The plausibility guard runs
+    on frames looked up by time or by call order, not on an explicit `index` (max_rate_pts_s=None switches it off).
     """
 
-    def __init__(self, source):
+    def __init__(self, source, occluder: bool = True, max_rate_pts_s: float | None = MAX_RATE_PTS_S):
+        self.occluder = occluder
+        self.guard = RateGuard(max_rate_pts_s) if max_rate_pts_s else None
         self.path = Path(source) if isinstance(source, (str, Path)) else None  # where real frames may sit beside it
         if self.path:
             source = json.loads(self.path.read_text(encoding="utf-8"))
@@ -207,6 +233,7 @@ class ReplayVision:
         self._calls = 0
 
     def read(self, frame, index: int | None = None) -> Analysis:
+        explicit = index is not None
         if index is None:
             if self._ts is not None:
                 index = max(bisect.bisect_right(self._ts, frame[0]) - 1, 0)
@@ -219,6 +246,16 @@ class ReplayVision:
         alertable = r.get("alertable", level is not None and status in ("OK", "EMPTY")
                           and conf >= ALERT_MIN_CONFIDENCE)
         box = r.get("box")  # recorded container box, so the dashboard can draw it when no overlay picture exists
-        return Analysis(Reading(None if level is None else float(level), conf, status, r.get("top_row"),
-                                bool(r.get("extrapolated", False)), bool(alertable)),
-                        tuple(float(v) for v in box) if box else None)
+        box = tuple(float(v) for v in box) if box else None
+        hands = tuple(tuple(float(v) for v in h) for h in r.get("hand_boxes") or ())
+        reading = Reading(None if level is None else float(level), conf, status, r.get("top_row"),
+                          bool(r.get("extrapolated", False)), bool(alertable),
+                          "dark/no detection" if status == "CAMERA_BLIND" else "")
+        if self.occluder:
+            overlap = r.get("hand_overlap")
+            if overlap is None and box:
+                overlap = box_overlap(box, hands)
+            reading = occluded(float(overlap or 0.0)) or reading
+        if self.guard and not explicit:
+            reading = self.guard.check(reading, float(frame[0]))
+        return Analysis(reading, box, None, False, hands)

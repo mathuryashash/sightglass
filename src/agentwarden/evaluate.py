@@ -239,13 +239,19 @@ def _with_blind(recs, span):
     return out
 
 
-def _replay_run(recs, scenario, fault_start, blind=None, advice=None):
-    vision = ReplayVision(_with_blind(recs, blind))
+def _replay_run(recs, scenario, fault_start, blind=None, advice=None, **vision_kw):
+    vision = ReplayVision(_with_blind(recs, blind), **vision_kw)
     with contextlib.redirect_stdout(io.StringIO()):
         pl = Pipeline(vision, scenario, float(fault_start), advice=advice)
     evs = [pl.tick((r["t"],)) for r in recs]
     pl.close()
     return pl, evs
+
+
+def _replay_run_prompts_as_recorded(recs, scenario, fault_start, advice=None):
+    """The recorded Spark calls were keyed to the prompts the pre-S6b readings produced, so section 6 replays with the
+    S6b occluder check and plausibility guard off (the guard drops pour frame t = 2, which changes the prompt)."""
+    return _replay_run(recs, scenario, fault_start, advice=advice, **OFF)
 
 
 def _t95(recs):
@@ -442,6 +448,8 @@ def write_markdown(r, path):
                                                      "diagnoser", "baseline"))
     c, sf, af = r["config"], lv["status_frac"], lv["status_frac_after_entry"]
     m, rs, bt = dg["model"], dg["rule_synthetic"], bl["blind_then_spoof"]
+    ro = r["robustness"]
+    hd, li, cb, pg = ro["hand"], ro["lights"], ro["combined"], ro["pour_guard"]
     pc = lambda x: _f(100 * x, 1)  # noqa: E731
     md = [
         "# SightGlass evaluation (offline, recorded data and simulator)\n",
@@ -527,7 +535,8 @@ def write_markdown(r, path):
         "Two different things, kept apart.\n",
         "### model (recorded Muse Spark calls)\n",
         f"The recorded cassette is replayed keylessly (no network) for freeze, drift and replay at fault start 12 and "
-        f"20: {m['n_incidents']} incidents (the cassette folder holds {m['cassette_files']} files; each incident "
+        f"20, on the readings as they were when the calls were recorded (S6b occluder check and plausibility guard off: a "
+        f"cassette is keyed to the exact prompt and the guard drops pour frame t = 2): {m['n_incidents']} incidents (the cassette folder holds {m['cassette_files']} files; each incident "
         f"re-derives its own prompt, so a file no incident asks for is not used). Ground truth for all of them is "
         f"{m['ground_truth']}.\n",
         _table(["fault", "starts t", "trip t s", "state", "model label", "confidence", "rule label",
@@ -562,7 +571,67 @@ def write_markdown(r, path):
                 for n, k in (("SAM 3.1", "sam"), ("colour threshold", "colour"))]),
         f"\nMean absolute difference between the two readers: {_f(bs['mean_abs_diff_sam_vs_colour'])} points. The "
         f"comparison holds for this one clip only and says nothing about other bottles, liquids or lighting.\n",
+        "## 8. Camera robustness (real clips)\n",
+        f"Two recordings with live SAM 3.1 at 2 fps, a steady phone and a full orange bottle (so the true level is "
+        f"{_f(CLIP_TRUTH, 0)} % in both; no tape, this is the owner's statement, not a measurement). "
+        f"**hand**: a hand sweeps in front of the bottle twice ({hd['frames']} frames, {_f(hd['duration_s'])} s); the "
+        f"liquid mask gets cut and SAM reports 11-82 % with status OK. **lights**: the room light goes off twice "
+        f"({li['frames']} frames, {_f(li['duration_s'])} s); SAM finds nothing. The fix has two parts. (1) OCCLUDED: a "
+        f"\"hand\" box covering at least {_f(100 * ro['overlap_threshold'], 0)} % of the container box makes the frame "
+        f"OCCLUDED: no level, never alertable, alarm CAMERA_UNVERIFIED, mismatch timers reset, never a trip. In the "
+        f"recordings that is the stored `hand_overlap` (SAM concept \"hand\", confidence 0.5 or more); in live mode it "
+        f"is a third SAM image call per frame (+50 % image cost over the two-call path; `occluder_concept=None` drops "
+        f"it). (2) Plausibility guard: a change faster than {_f(ro['max_rate_pts_s'], 0)} points/s between alertable "
+        f"readings is LOW_CONFIDENCE (\"implausible jump\") for that frame.\n",
+        _table(["clip", "frames", "OK", "OCCLUDED", "BLIND", "LOW_CONF", "OK before the fix",
+                "false trips (default N_s 5 s)", "false trips before", f"false trips at N_s {N_S_SENSITIVITY:g} s: "
+                "before / after", "max abs(reading - 100) among OK: before / after"],
+               [(n, x["frames"], x["ok"], x["occluded"], x["blind"], x["low_conf"], x["frames_ok_before"],
+                 x["false_trips"], x["false_trips_before"],
+                 f"{x['false_trips_before_n2']} / {x['false_trips_n2']}",
+                 f"{_f(x['max_abs_err_ok_before'])} / {_f(x['max_abs_err_ok_after'])}")
+                for n, x in (("hand", hd), ("lights", li))]),
+        f"\nFalse trips are counted with the PLC reading the true {_f(CLIP_TRUTH, 0)} % and HIGH_HIGH switched off "
+        f"(the bottle really is full; a trip on a full bottle would be correct, not false). Before the fix, a hand "
+        f"left the camera at \"OK\" and as far as {_f(hd['max_abs_err_ok_before'])} points from the truth. It did not "
+        f"trip at the default N_s = 5 s only because each sweep lasted 4 s or less and one low-confidence frame "
+        f"(0.43) cut the first one; with N_s = {N_S_SENSITIVITY:g} s the old behaviour trips "
+        f"({hd['false_trips_before_n2']} of 1 run) and the fixed one does not ({hd['false_trips_n2']}). The "
+        f"plausibility guard alone is not enough: with it but without the hand check, {hd['ok_guard_only']} frames "
+        f"stay OK and the worst is still {_f(hd['max_abs_err_ok_guard_only'])} points off, because a mask that stays "
+        f"wrong for two frames looks like a real change. After the fix the {hd['ok']} frames still marked OK read "
+        f"within {_f(hd['max_abs_err_ok_after'])} points of 100. The {hd['occluded']} OCCLUDED frames are exactly "
+        f"the frames the recorder marked with a hand overlap of 0.20 or more.\n",
+        f"Lights: the {li['blind']} dark frames are CAMERA_BLIND (alarm only, no trip, the HMI says CAMERA BLOCKED - NO "
+        f"TRIP), the readings return to 100 % when the light returns ({li['ok']} OK frames, worst "
+        f"{_f(li['max_abs_err_ok_after'])} points off). Lights needed no new rule; the number shown is the existing "
+        f"blind behaviour on a real recording.\n",
+        f"Combined: the hand clip plus a frozen PLC (fault from t = 0, PLC stuck at the tank's 20 % while the bottle "
+        f"is full), with {_f(cb['appended_clean_s'], 0)} s of clean frames appended (copies of the last real frame, "
+        f"so these are not new data). HIGH_HIGH is off. Fixed: no trip during the occlusion; "
+        f"trip = {cb['tripped']} at t = {_f(cb['trip_t'], 1)} s ({cb['trip_reason']}, on an {cb['trip_status']} "
+        f"frame reading {_f(cb['camera_at_trip'], 0)} %), the last OCCLUDED frame was t = "
+        f"{_f(cb['last_occluded_t'], 1)} s, so the {_f(interlock.Config().N_s, 0)} s divergence timer ran on clean "
+        f"frames only (clean from t = {_f(cb['last_occluded_t'] + 0.5, 1)} s). Before the fix the same run tripped at t = {_f(cb['before']['trip_t'], 1)} s "
+        f"({cb['before']['trip_reason']}), "
+        f"{_f(cb['trip_t'] - cb['before']['trip_t'], 1)} s earlier, with the timer fed by hand-corrupted readings: "
+        f"right fault, but the verdict leaned on frames that were not trustworthy.\n",
+        f"Pour clip check (the fix must not break a real fill): {pg['frames']} frames, the plausibility guard flagged "
+        f"{pg['flagged']} (t = {', '.join(_f(t, 0) for t in pg['flagged_t'])}, the hand entering the shot), the hand "
+        f"check flagged {pg['occluded']}. After the entry frames {pg['frames_ok_after_entry']} of "
+        f"{pg['frames_after_entry']} frames stay OK and the real pour peaks at {_f(pg['max_rate_after_entry'])} "
+        f"points/s, under the {_f(ro['max_rate_pts_s'], 0)} points/s limit (the entry frames alone jump "
+        f"{_f(pg['max_rate_incl_entry'], 0)} points/s).\n",
         "## Limits\n",
+        "- Camera robustness (section 8) rests on one bottle, one hand, one indoor light and two short clips (22 and "
+        "27 frames). Other occluders (a sleeve, a cloth), a hand SAM does not call \"hand\", or a partial shadow are "
+        "untested. The truth of 100 % is the owner's statement, not a measurement.",
+        "- The occluder concept adds a third SAM image per frame (+50 % image cost). A hand that covers less than 20 % "
+        f"of the bottle is not OCCLUDED; the plausibility guard (8 points/s, from a pour that peaked at "
+        f"{_f(pg['max_rate_after_entry'])}) is the only net there, and a wrong mask that persists for two frames "
+        f"passes it.",
+        "- The combined test appends 10 s of copied clean frames; the hand clip alone is too short for the 5 s "
+        "divergence timer to run on clean frames.",
         "- No tape ground truth: level quality uses a monotonic-pour proxy and eyeballed approximate levels, so no "
         "accuracy figure is claimed.",
         "- One hand-held clip and one bottle with one orange liquid; the first frames show a hand entering the shot.",
@@ -580,6 +649,100 @@ def write_markdown(r, path):
     path.write_text("\n".join(md), encoding="utf-8")
 
 
+# ---------------------------------------------------------------- 8. camera robustness (real clips)
+
+CLIP_TRUTH = 100.0  # the bottle in the hand and lights clips is full the whole time (no tape: stated, not measured)
+N_S_SENSITIVITY = 2.0  # the recorded sweeps last <= 4 s, so the default N_s = 5 never fires; 2 s shows the hazard
+OFF = dict(occluder=False, max_rate_pts_s=None)  # ReplayVision flags that give back the pre-S6b behaviour
+
+
+def _clip(name):
+    return json.loads((DEMO / f"{name}_replay.json").read_text(encoding="utf-8"))
+
+
+def _read_clip(recs, **kw):
+    rv = ReplayVision(recs, **kw)
+    return [rv.read((r["t"],)).reading for r in recs]
+
+
+def _plc_at_truth_trips(recs, readings, n_s):
+    """Interlock fed the clip with the PLC reading the true 100 %. HIGH_HIGH is off (the bottle really is full)."""
+    cfg = interlock.Config(N_s=n_s, hh_limit=101.0)
+    st = interlock.initial_state()
+    for r, rd in zip(recs, readings):
+        st, _ = interlock.step(st, rd, CLIP_TRUTH, 0.0, r["t"], cfg)
+    return bool(st.tripped)
+
+
+def _clip_stats(name):
+    recs = _clip(name)
+    after, before = _read_clip(recs), _read_clip(recs, **OFF)
+    guard_only = _read_clip(recs, occluder=False)
+    cnt = Counter(x.status for x in after)
+
+    def worst(rs):
+        errs = [abs(x.level_pct - CLIP_TRUTH) for x in rs if x.alertable and x.status == "OK"]
+        return max(errs) if errs else None
+
+    return {"frames": len(recs), "duration_s": recs[-1]["t"] - recs[0]["t"], "ok": cnt["OK"],
+            "occluded": cnt["OCCLUDED"], "blind": cnt["CAMERA_BLIND"], "low_conf": cnt["LOW_CONFIDENCE"],
+            "empty": cnt["EMPTY"],
+            "frames_ok_before": sum(x.status == "OK" and x.alertable for x in before),
+            "false_trips": int(_plc_at_truth_trips(recs, after, interlock.Config().N_s)),
+            "false_trips_before": int(_plc_at_truth_trips(recs, before, interlock.Config().N_s)),
+            "false_trips_n2": int(_plc_at_truth_trips(recs, after, N_S_SENSITIVITY)),
+            "false_trips_before_n2": int(_plc_at_truth_trips(recs, before, N_S_SENSITIVITY)),
+            "max_abs_err_ok_before": worst(before), "max_abs_err_ok_after": worst(after),
+            "max_abs_err_ok_guard_only": worst(guard_only),
+            "ok_guard_only": sum(x.status == "OK" and x.alertable for x in guard_only)}
+
+
+def _combined():
+    """Hand clip + PLC frozen (freeze fault from t = 0, PLC stuck at the tank's 20 %), 10 s of clean frames appended
+    (copies of the last real frame). HIGH_HIGH is off. Trip is expected only on clean frames."""
+    recs = _clip("hand")
+    last = recs[-1]
+    recs += [dict(last, t=last["t"] + 0.5 * (i + 1)) for i in range(20)]
+
+    def run(**kw):
+        cfg = interlock.Config(hh_limit=101.0)
+        with contextlib.redirect_stdout(io.StringIO()):
+            pl = Pipeline(ReplayVision(recs, **kw), "freeze", 0.0, cfg=cfg)
+        evs = [pl.tick((r["t"],)) for r in recs]
+        pl.close()
+        s = pl.summary
+        occ = [e["t"] for e in evs if e["status"] == "OCCLUDED"]
+        hit = next((e for e in evs if e["t"] == s.trip_t), None) if s.tripped else None
+        return {"tripped": s.tripped, "trip_t": s.trip_t, "trip_reason": s.trip_reason,
+                "last_occluded_t": max(occ) if occ else None,
+                "trip_status": hit["status"] if hit else None,
+                "trip_during_occlusion": bool(hit and hit["status"] == "OCCLUDED"),
+                "camera_at_trip": hit["camera"] if hit else None}
+
+    return {**run(), "before": run(**OFF), "clip_s": recs[-1]["t"], "appended_clean_s": 10.0}
+
+
+def _pour_guard():
+    recs = _clip("pour")
+    after, raw = _read_clip(recs), _read_clip(recs, **OFF)
+    ok_ = [(r["t"], r["level_pct"]) for r in recs if r["t"] >= FIRST_FRAME and r["status"] == "OK"]
+    rates = [abs(y - x) / (b - a) for (a, x), (b, y) in zip(ok_, ok_[1:])]
+    allok = [(r["t"], r["level_pct"]) for r in recs if r["status"] == "OK"]
+    flagged = [r["t"] for r, a, b in zip(recs, after, raw) if b.alertable and not a.alertable]
+    return {"frames": len(recs), "flagged": len(flagged), "flagged_t": flagged,
+            "occluded": sum(a.status == "OCCLUDED" for a in after),
+            "max_rate_after_entry": max(rates), "max_rate_incl_entry": max(
+                abs(y - x) / (b - a) for (a, x), (b, y) in zip(allok, allok[1:])),
+            "frames_ok_after_entry": sum(a.status == "OK" and a.alertable for r, a in zip(recs, after)
+                                         if r["t"] >= FIRST_FRAME),
+            "frames_after_entry": sum(r["t"] >= FIRST_FRAME for r in recs)}
+
+
+def robustness():
+    return {"hand": _clip_stats("hand"), "lights": _clip_stats("lights"), "combined": _combined(),
+            "pour_guard": _pour_guard(), "max_rate_pts_s": 8.0, "overlap_threshold": 0.20}
+
+
 # ---------------------------------------------------------------- driver
 
 def run_all(cfg):
@@ -588,9 +751,9 @@ def run_all(cfg):
     sigma = lv["sigma_used"]
     return {"config": cfg, "level": lv, "stills": stills_quality(), "detection": detection(cfg, sigma),
             "false_alarms": false_alarms(cfg, sigma), "replay": replay_runs(recs), "blind": blind_runs(recs),
-            "diagnoser": {"model": evaluate_diag.diagnoser_model(recs, DEMO / "spark_cassette", _replay_run),
+            "diagnoser": {"model": evaluate_diag.diagnoser_model(recs, DEMO / "spark_cassette", _replay_run_prompts_as_recorded),
                           "rule_synthetic": evaluate_diag.diagnoser_rule_synthetic(cfg, sigma, _run)},
-            "baseline": baseline(recs)}
+            "baseline": baseline(recs), "robustness": robustness()}
 
 
 def main(argv=None) -> int:

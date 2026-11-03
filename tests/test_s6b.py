@@ -170,13 +170,14 @@ def test_hand_clip_every_occluded_frame_is_non_alertable_and_clean_frames_stay_o
             clean += 1
             assert a.reading.status == "OK" and a.reading.alertable, r["t"]
             assert a.reading.level_pct == pytest.approx(100.0)
-    assert bad == 14 and clean == 8  # t=1.5-5.5 and 6.5-9.5
+    assert bad == 16 and clean == 6  # t=1.5-5.5 and 6.5-9.5
 
 
 def test_hand_clip_without_the_fix_reproduces_the_problem():
     rv = mod("vision").ReplayVision(load(HAND), occluder=False, max_rate_pts_s=None)
     rs = [rv.read((r["t"],)).reading for r in load(HAND)]
-    assert min(r.level_pct for r in rs) < 15 and all(r.alertable for r in rs)
+    assert min(r.level_pct for r in rs) < 15
+    assert sum(r.alertable and r.level_pct < 90 for r in rs) >= 12  # confident, status OK, and far from the truth of 100
 
 
 def test_hand_clip_guard_alone_still_catches_the_first_jump():
@@ -197,17 +198,19 @@ def test_hand_clip_never_trips_inside_the_occlusion(scenario):
 
 def test_hand_clip_direct_interlock_plc_at_truth_never_trips_with_the_fix_but_does_without():
     il, vis = mod("interlock"), mod("vision")
-    cfg = il.Config(**FULL_ONLY)
 
-    def trips(**kw):
+    def trips(n_s, **kw):
+        cfg = il.Config(N_s=n_s, **FULL_ONLY)
         rv, st, out = vis.ReplayVision(load(HAND), **kw), il.initial_state(), False
         for r in load(HAND):
             st, _ = il.step(st, rv.read((r["t"],)).reading, 100.0, 0.0, r["t"], cfg)
             out = out or st.tripped
         return out
 
-    assert trips() is False
-    assert trips(occluder=False, max_rate_pts_s=None) is True  # the old behaviour: a hand makes a false DIVERGENCE trip
+    # the recorded sweeps last <= 4 s, under the default N_s = 5: no old trip at N_s 5, but one at 2 s
+    assert trips(5.0, occluder=False, max_rate_pts_s=None) is False
+    assert trips(2.0, occluder=False, max_rate_pts_s=None) is True  # old behaviour: a hand makes a false DIVERGENCE trip
+    assert trips(2.0) is False and trips(0.5) is False
 
 
 def test_combined_hand_plus_freeze_trips_only_on_clean_frames():
@@ -348,6 +351,9 @@ def test_replay_cli_loads_the_hand_clip_with_its_own_frames():
     p.add_common_args(ap)
     src, vis = p.resolve(ap.parse_args(["--replay", str(HAND), "--frames", str(REAL / "hand_frames")]))
     assert len(list(src)) == 22 and vis.read((4.0,)).reading.status == "OCCLUDED"
+    # a full bottle trips HIGH_HIGH at once by default; --hh-limit 101 lets the dashboard show the occlusion
+    assert p.config_from(ap.parse_args([])) is None
+    assert p.config_from(ap.parse_args(["--hh-limit", "101"])).hh_limit == 101.0
 
 
 # ---------------------------------------------------------------- evaluation section
@@ -365,7 +371,7 @@ def tiny_run(tmp_path_factory):
 def test_eval_robustness_numbers(tiny_run):
     r = json.loads((tiny_run[0] / "results.json").read_text(encoding="utf-8"))["robustness"]
     h, li = r["hand"], r["lights"]
-    assert h["frames"] == 22 and h["occluded"] == 14 and h["false_trips"] == 0 and h["false_trips_before"] >= 1
+    assert h["frames"] == 22 and h["occluded"] == 16 and h["false_trips"] == 0 and h["false_trips_before_n2"] >= 1
     assert h["ok"] + h["occluded"] + h["blind"] + h["low_conf"] == h["frames"]
     assert h["max_abs_err_ok_before"] > 80 and h["max_abs_err_ok_after"] < 1.0
     assert li["frames"] == 27 and li["blind"] == 11 and li["false_trips"] == 0 and li["max_abs_err_ok_after"] < 1.0

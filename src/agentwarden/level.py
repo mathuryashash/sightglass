@@ -1,13 +1,13 @@
 """Liquid level from a liquid mask + container box + row->% calibration. Pure numpy."""
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import numpy as np
 
 Box = tuple[float, float, float, float]  # (left, top, right, bottom)
-Status = Literal["OK", "EMPTY", "CAMERA_BLIND", "LOW_CONFIDENCE"]
+Status = Literal["OK", "EMPTY", "CAMERA_BLIND", "LOW_CONFIDENCE", "OCCLUDED"]
 
 
 @dataclass(frozen=True)
@@ -52,17 +52,21 @@ class Reading:
     top_row: float | None
     extrapolated: bool = False
     # Safe to raise a refill alert on. False for LOW_CONFIDENCE (its level_pct is a guess, never
-    # act on it) and CAMERA_BLIND; OK/EMPTY need confidence >= ALERT_MIN_CONFIDENCE.
+    # act on it), CAMERA_BLIND and OCCLUDED (something covers the container); OK/EMPTY need confidence >=
+    # ALERT_MIN_CONFIDENCE.
     alertable: bool = False
+    reason: str = ""  # why it is not trusted, for the HMI: "hand/occluded", "dark/no detection", "implausible jump"
 
 
 ALERT_MIN_CONFIDENCE = 0.5
+OCCLUDER_OVERLAP = 0.20  # an occluder box covering this share of the container box makes the reading OCCLUDED
+MAX_RATE_PTS_S = 8.0  # fastest believable level change; the real pour peaked at 5.3 pts/s
 EMPTY_CONFIDENCE_FACTOR = 0.5
 
 
-def _reading(level, confidence, status, top_row, extrapolated=False) -> Reading:
+def _reading(level, confidence, status, top_row, extrapolated=False, reason="") -> Reading:
     alertable = status in ("OK", "EMPTY") and confidence >= ALERT_MIN_CONFIDENCE
-    return Reading(level, confidence, status, top_row, extrapolated, alertable)
+    return Reading(level, confidence, status, top_row, extrapolated, alertable, reason)
 
 
 def _body_top(col: np.ndarray) -> int:
@@ -88,7 +92,7 @@ def estimate(
     but no liquid, which is plausible but unverified (SAM misses are a normal outcome).
     """
     if container_box is None:
-        return _reading(None, 0.0, "CAMERA_BLIND", None)
+        return _reading(None, 0.0, "CAMERA_BLIND", None, reason="dark/no detection")
     empty = _reading(
         0.0, (1.0 if container_confidence is None else container_confidence) * EMPTY_CONFIDENCE_FACTOR, "EMPTY", None
     )
@@ -123,3 +127,55 @@ def camera_moved(box_now: Box | None, box_ref: Box | None, tol_px: float) -> boo
     if box_now is None or box_ref is None:
         return True
     return max(abs(a - b) for a, b in zip(box_now, box_ref)) > tol_px
+
+
+def box_overlap(container: Box, boxes) -> float:
+    """Largest share of the container box covered by any single box in `boxes` (0 when none)."""
+    l, t, r, b = container
+    area = (r - l) * (b - t)
+    best = 0.0
+    for bl, bt, br, bb in boxes:
+        w, h = min(r, br) - max(l, bl), min(b, bb) - max(t, bt)
+        if w > 0 and h > 0 and area > 0:
+            best = max(best, w * h / area)
+    return best
+
+
+def occluded(overlap: float) -> Reading | None:
+    """OCCLUDED reading (no level, never alertable) when an occluder covers enough of the container, else None."""
+    if overlap >= OCCLUDER_OVERLAP:
+        return Reading(None, 0.0, "OCCLUDED", None, False, False, "hand/occluded")
+    return None
+
+
+class RateGuard:
+    """Physics plausibility: a level cannot change faster than `max_rate_pts_s` between alertable readings.
+
+    A faster change is LOW_CONFIDENCE ("implausible jump") for that frame. The reference stays at the last
+    accepted reading; if the new level then persists (the next reading is plausible against the flagged one) it
+    is accepted, so a real step costs one frame, not a lockout. Non-alertable readings pass through untouched
+    and never become the reference. Time going backwards (replay loop) forgets the reference.
+    """
+
+    def __init__(self, max_rate_pts_s: float = MAX_RATE_PTS_S):
+        self.max_rate_pts_s = max_rate_pts_s
+        self._ref: tuple[float, float] | None = None  # last accepted (t, level)
+        self._pending: tuple[float, float] | None = None  # last flagged (t, level)
+        self._last_t: float | None = None
+
+    def _fast(self, ref, t, level) -> bool:
+        return abs(level - ref[1]) > self.max_rate_pts_s * max(t - ref[0], 0.0)
+
+    def check(self, reading: Reading, t: float) -> Reading:
+        if self._last_t is not None and t < self._last_t:
+            self._ref = self._pending = None
+        self._last_t = t
+        if not reading.alertable or reading.level_pct is None:
+            return reading
+        level = reading.level_pct
+        if self._ref is not None and self._fast(self._ref, t, level) and not (
+                self._pending is not None and not self._fast(self._pending, t, level)):
+            self._pending = (t, level)
+            return replace(reading, status="LOW_CONFIDENCE", alertable=False, reason="implausible jump")
+        self._ref, self._pending = (t, level), None
+        return reading

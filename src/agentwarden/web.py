@@ -28,7 +28,7 @@ from PIL import Image, ImageDraw
 from agentwarden.advisor import add_diagnoser_args, build_advisor
 from agentwarden.fault_injector import SCENARIOS
 from agentwarden.modbus_io import ModbusClient, ModbusPlcServer
-from agentwarden.pipeline import BANNER, Pipeline, add_common_args, drive, resolve
+from agentwarden.pipeline import BANNER, Pipeline, add_common_args, config_from, drive, resolve
 from agentwarden.vision import ReplayVision
 
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
@@ -64,7 +64,16 @@ def _tint(region):
     return (0.55 * region + 0.45 * TINT).astype(np.uint8)
 
 
-def render_frame(jpeg: bytes | None, mask, box, top_row) -> bytes:
+AMBER = (255, 176, 0)  # occluder (hand) boxes
+
+
+def _draw_hands(im, hand_boxes):
+    d = ImageDraw.Draw(im)
+    for hb in hand_boxes or ():
+        d.rectangle(hb, outline=AMBER, width=3)
+
+
+def render_frame(jpeg: bytes | None, mask, box, top_row, hand_boxes=()) -> bytes:
     """Camera frame as PNG: liquid tinted, container box, red surface line. Without a mask but with a recorded box and
     surface row (replay), the liquid is the box below the surface row."""
     if not jpeg:
@@ -85,15 +94,18 @@ def render_frame(jpeg: bytes | None, mask, box, top_row) -> bytes:
             d.rectangle(box, outline=(0, 200, 255), width=3)
             if top_row is not None:
                 d.line([(box[0], top_row), (box[2], top_row)], fill=(255, 0, 0), width=3)
+        _draw_hands(im, hand_boxes)
     out = io.BytesIO()
     im.save(out, "PNG")
     return out.getvalue()
 
 
-def overlay_png(data: bytes) -> bytes:
-    """A pre-drawn overlay picture (JPEG) as PNG, pixel for pixel."""
+def overlay_png(data: bytes, hand_boxes=()) -> bytes:
+    """A pre-drawn overlay picture (JPEG) as PNG; occluder boxes are added in amber."""
     out = io.BytesIO()
-    Image.open(io.BytesIO(data)).convert("RGB").save(out, "PNG")
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    _draw_hands(im, hand_boxes)
+    im.save(out, "PNG")
     return out.getvalue()
 
 
@@ -231,7 +243,7 @@ async function poll(){
   $('relay').textContent=relayText(s.relay);
   const ul=$('alarms');ul.textContent='';
   for(const a of s.alarms){const li=document.createElement('li');li.textContent=a;ul.appendChild(li);}
-  $('blind').textContent=s.camera_notice;
+  $('blind').textContent=s.camera_notice+(v.sub_reason?' ['+v.sub_reason+']':'');
   $('blind').className=s.camera_notice?'warn':'hidden';
   const ol=$('timeline');ol.textContent='';
   for(const e of s.events){const li=document.createElement('li'),tt=document.createElement('span');tt.className='tt';tt.textContent='t='+Math.round(e.t)+'s';li.appendChild(tt);li.appendChild(document.createTextNode(e.text));ol.appendChild(li);}
@@ -277,7 +289,10 @@ def hmi_view(s: dict) -> dict:
         pill, text = "normal", "NORMAL"
     pump = bool(s.get("pump_on"))
     return {
-        "pill": pill, "pill_text": text, "plc_txt": _pct(plc), "cam_txt": _pct(lvl),
+        "pill": pill, "pill_text": text,
+        "sub_reason": (cam.get("reason") or {"OCCLUDED": "hand/occluded", "CAMERA_BLIND": "dark/no detection"}.get(
+            cam.get("status"), "")) if blocked and not tripped else "",
+        "plc_txt": _pct(plc), "cam_txt": _pct(lvl),
         "gap_txt": "GAP -" if gap is None else f"GAP {round(gap)} pts",
         "gap_class": "red" if tripped else "amber" if amber else "ok",
         "pump_txt": "PUMP ON" if pump else "PUMP OFF", "pump_class": "on" if pump else "off",
@@ -331,7 +346,7 @@ def render_page(s: dict, token: str, nonce: str, trend_svg: str) -> str:
 
     alarms = "".join(f"<li>{e(str(a))}</li>" for a in s["alarms"])
     trip = f'TRIPPED ({e(str(s["trip_reason"]))})' if s["tripped"] else "not tripped"
-    notice = e(s.get("camera_notice", ""))
+    notice = e(s.get("camera_notice", "") + (f" [{v['sub_reason']}]" if v["sub_reason"] else ""))
     events = "".join(f'<li><span class="tt">t={round(ev["t"])}s</span>{e(str(ev["text"]))}</li>'
                      for ev in s.get("events", []))
     inject = "".join(
@@ -458,11 +473,12 @@ def create_app(pl: Pipeline) -> FastAPI:
         inp = pl.render_inputs()  # copied under the pipeline lock; drawn outside it, once per tick
 
         def build():
-            if inp["overlay"]:
-                return overlay_png(inp["overlay"])
             a = inp["analysis"]
+            hands = a.hand_boxes if a else ()
+            if inp["overlay"]:
+                return overlay_png(inp["overlay"], hands)
             return render_frame(inp["jpeg"], a.mask if a else None, a.box if a else None,
-                                a.reading.top_row if a else None)
+                                a.reading.top_row if a else None, hands)
 
         return Response(cache.get("frame", inp["key"], build), media_type="image/png")
 
@@ -530,7 +546,8 @@ def main(argv=None) -> int:
     if a.modbus:
         mb_server = ModbusPlcServer(port=0).start()
         mb_client = ModbusClient("127.0.0.1", mb_server.port)
-    pl = Pipeline(vision, a.scenario, a.fault_start, None, a.seed, a.sigma, mb_server, mb_client, advice=advice)
+    pl = Pipeline(vision, a.scenario, a.fault_start, config_from(a), a.seed, a.sigma, mb_server, mb_client,
+                  advice=advice)
     pl.overlay_for = getattr(source, "overlay", None)  # real replay frames come with their pre-drawn overlays
     server.config.app = create_app(pl)
     stop = threading.Event()

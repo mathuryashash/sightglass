@@ -30,12 +30,13 @@ from agentwarden.vision import Analysis, LatestWorker, LiveVision, ReplayVision
 log = logging.getLogger(__name__)
 
 BANNER = "SIMULATED CONTROLLER ON LOCALHOST - NO REAL SYSTEM"
-BLIND_STATUSES = ("CAMERA_BLIND", "LOW_CONFIDENCE")
+BLIND_STATUSES = ("CAMERA_BLIND", "LOW_CONFIDENCE", "OCCLUDED")
 UNVERIFIED_ADVICE_S = 10.0  # camera unverified for longer than this queues one advisory diagnosis
 ADVICE_WINDOW_S = 120.0  # recent events kept for the advisory diagnosis
 STALL_S = 3.0  # no finished tick for this long (wall clock) raises LOOP_STALLED
 EVENTS_SHOWN = 8  # the dashboard timeline
-CAMERA_NOTICES = {"moved": "camera moved - recalibrate", "blind": "camera blinded - no trip"}
+CAMERA_NOTICES = {"moved": "camera moved - recalibrate", "blind": "camera blinded - no trip",
+                  "occluded": "camera blocked by a hand or object (occluded) - no trip"}
 
 
 class Pipeline:
@@ -189,7 +190,8 @@ class Pipeline:
             ev = {
                 "t": t, "truth": round(truth, 3), "reported": round(reported, 3), "plc": plc_level,
                 "camera": reading.level_pct, "confidence": reading.confidence, "status": reading.status,
-                "camera_moved": analysis.camera_moved, "pump_on": pump_on, "tripped": self.state.tripped,
+                "camera_moved": analysis.camera_moved, "unverified": interlock.unverified_reason(reading),
+                "reason": reading.reason, "pump_on": pump_on, "tripped": self.state.tripped,
                 "trip_reason": self.state.trip_reason, "actions": [a.value for a in actions],
             }
             self.last = ev
@@ -224,7 +226,7 @@ class Pipeline:
         if self.state.tripped and not self._trip_noted:
             self._trip_noted = True
             self.note(t, "trip", f"TRIPPED: {self.state.trip_reason}")
-        cam = "moved" if moved else "blind" if status in BLIND_STATUSES else "ok"
+        cam = "moved" if moved else "occluded" if status == "OCCLUDED" else "blind" if status in BLIND_STATUSES else "ok"
         if cam != self._cam_state:
             self._cam_state = cam
             self.note(t, "camera", CAMERA_NOTICES.get(cam, "camera verified again"))
@@ -332,12 +334,15 @@ class Pipeline:
                 "events": [dict(e) for e in list(self.timeline)[::-1][:EVENTS_SHOWN]],
                 "fault_t": self.injector.start_t if self._fault_noted else None,
                 "camera_notice": CAMERA_NOTICES["moved"] if moved else
+                CAMERA_NOTICES["occluded"] if status == "OCCLUDED" else
                 CAMERA_NOTICES["blind"] if status in BLIND_STATUSES else "",
                 "t": self.last_t, "clock": time.strftime("%Y-%m-%d %H:%M:%S"), "banner": BANNER,
                 "plc_level": ev.get("plc"), "pump_on": bool(ev.get("pump_on", False)),
                 "camera": {
                     "level_pct": ev.get("camera"), "confidence": ev.get("confidence", 0.0), "status": status,
                     "alertable": bool(a and a.reading.alertable), "camera_moved": moved,
+                    "reason": "camera moved" if moved else (a.reading.reason if a else ""),
+                    "hand_boxes": [list(b) for b in a.hand_boxes] if a else [],
                 },
                 "permit": self.permit, "tripped": self.state.tripped, "trip_reason": self.state.trip_reason,
                 "trip_t": self.state.trip_t, "alarms": alarms, "scenario": self.injector.scenario,
@@ -441,8 +446,9 @@ def build_vision(replay: str | None, cassette: str | None = None, run_id: str = 
             raise RuntimeError("cassette replay mode makes no network calls")
 
         ledger = Ledger(Path(tempfile.mkdtemp(prefix="sg_ledger_")) / "ledger.jsonl")
+        # recorded cassettes pre-date the "hand" concept: no third call (it would miss the cassette)
         return LiveVision(MetaClient(no_network, ledger, Cassette(cassette), run_id, 1.0, "replay"),
-                          run_id=run_id)
+                          run_id=run_id, occluder_concept=None)
     return None
 
 
@@ -460,8 +466,14 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--modbus", action="store_true", help="route tags through a localhost Modbus server")
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--sigma", type=float, default=3.0, help="fake camera noise, pct points")
+    p.add_argument("--hh-limit", type=float, help="high-high trip level, pct (default 95). The hand/lights clips show "
+                   "a FULL bottle, which trips high-high at once; use 101 to watch the occlusion without it")
     p.add_argument("--cam-user")
     p.add_argument("--cam-password")
+
+
+def config_from(a) -> interlock.Config | None:
+    return interlock.Config(hh_limit=a.hh_limit) if a.hh_limit is not None else None
 
 
 def resolve(a):
@@ -487,7 +499,7 @@ def main(argv=None) -> int:
     source, vision = resolve(a)
     live_camera = a.source is not None and a.source.startswith("http:")
     s = run(source, vision, a.scenario, a.fault_start, a.seed, a.sigma, a.log, a.modbus,
-            latest_wins=live_camera, start_at=a.start_at)
+            cfg=config_from(a), latest_wins=live_camera, start_at=a.start_at)
     print(json.dumps(s.__dict__))
     return 0
 
