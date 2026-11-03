@@ -93,6 +93,6 @@ The schema is placed in the prompt, so the request stays portable across OpenAI-
 
 ## What this cost
 
-Under 1 USD in total for all live calls (SAM smoke tests and recordings, hosted Spark calls, Baseten calls). This is an estimate, not a ledger export. Every live path goes through the spend ledger in `src/agentwarden/cost.py`, which refuses a call that could pass its cap, and the live Spark path in the dashboard is capped at 1 USD per process.
+Measured from the local spend ledger on 3 Nov 2026: SAM 3.1 0.72 USD, Muse Spark 0.24 USD (0.96 USD on the Meta API), plus about 0.045 USD on Baseten for the three Muse Spark Open calls (computed from their token usage at the listed 1.25/4.25 USD per million input/output tokens). Every live path goes through the spend ledger in `src/agentwarden/cost.py`, which refuses a call that could pass its cap, and the live Spark path in the dashboard is capped at 1 USD per process.
 
 Keyless replay costs nothing. The recorded SAM readings, the Spark cassette (`demo/real/spark_cassette`) and the Baseten cassette (`demo/real/open_spark_cassette`) are in the repository.

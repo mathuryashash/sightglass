@@ -1,7 +1,7 @@
 [project]
 name = "agentwarden"
 version = "0.1.0"
-description = "Firewall for AI computer-use agents shopping on a synthetic store"
+description = "SightGlass: a phone camera + Meta SAM 3.1 as an independent overflow guard for a simulated tank controller; Muse Spark explains incidents (advisory only)"
 readme = "README.md"
 authors = [{ name = "Yashash Mathur" }]
 license = "MIT"
